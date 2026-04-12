@@ -99,7 +99,7 @@ const detectLocalServer = async (onProgress) => {
     const local8080 = await checkIP('localhost', 8080);
     if (local8080) return local8080;
 
-    return 'http://localhost:8000';
+    return 'http://localhost:8080';
 };
 
 // Define available backends
