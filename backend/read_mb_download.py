@@ -1,4 +1,4 @@
-import moviebox_api.download as dl
+import moviebox_api.v1.download as dl
 import inspect
 
 # Get source code of the module

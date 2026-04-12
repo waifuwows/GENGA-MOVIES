@@ -8,11 +8,11 @@ import httpx
 from throttlebuster import DownloadedFile, ThrottleBuster
 from throttlebuster.helpers import get_filesize_string, sanitize_filename
 
-from moviebox_api._bases import (
+from moviebox_api.v1._bases import (
     BaseContentProviderAndHelper,
     BaseFileDownloaderAndHelper,
 )
-from moviebox_api.constants import (
+from moviebox_api.v1.constants import (
     CURRENT_WORKING_DIR,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_READ_TIMEOUT_ATTEMPTS,
@@ -24,18 +24,18 @@ from moviebox_api.constants import (
     DownloadQualitiesType,
     SubjectType,
 )
-from moviebox_api.extractor.models.json import (
+from moviebox_api.v1.extractor.models.json import (
     ItemJsonDetailsModel,
     PostListItemSubjectModel,
 )
-from moviebox_api.helpers import assert_instance, get_absolute_url
-from moviebox_api.models import (
+from moviebox_api.v1.helpers import assert_instance, get_absolute_url
+from moviebox_api.v1.models import (
     CaptionFileMetadata,
     DownloadableFilesMetadata,
     MediaFileMetadata,
     SearchResultsItem,
 )
-from moviebox_api.requests import Session
+from moviebox_api.v1.requests import Session
 
 __all__ = [
     "MediaFileDownloader",

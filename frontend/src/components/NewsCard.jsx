@@ -6,7 +6,7 @@ const NewsCard = ({ item, onClick, API_BASE }) => {
         onClick && onClick(item);
     };
 
-    const proxiedThumbnail = item.thumbnail ? `${API_BASE}/api/image-proxy?url=${encodeURIComponent(item.thumbnail)}` : null;
+    const proxiedThumbnail = item.thumbnail;
 
     return (
         <div className="news-card"

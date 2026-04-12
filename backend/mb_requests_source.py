@@ -11,13 +11,13 @@ from httpx._types import (
     TimeoutTypes,
 )
 
-from moviebox_api.constants import DOWNLOAD_REQUEST_HEADERS
-from moviebox_api.exceptions import EmptyResponseError
-from moviebox_api.helpers import (
+from moviebox_api.v1.constants import DOWNLOAD_REQUEST_HEADERS
+from moviebox_api.v1.exceptions import EmptyResponseError
+from moviebox_api.v1.helpers import (
     get_absolute_url,
     process_api_response,
 )
-from moviebox_api.models import MovieboxAppInfo
+from moviebox_api.v1.models import MovieboxAppInfo
 
 request_cookies = {}
 

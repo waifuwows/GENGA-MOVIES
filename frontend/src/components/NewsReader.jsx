@@ -9,7 +9,7 @@ const NewsReader = ({ articleId, onClose, API_BASE }) => {
         const fetchArticle = async () => {
             setLoading(true);
             try {
-                const res = await fetch(`https://api-consumet-org-mswp.onrender.com/news/ann/info?id=${encodeURIComponent(articleId)}`);
+                const res = await fetch(`${API_BASE}/news/ann/info?id=${encodeURIComponent(articleId)}`);
                 if (res.ok) {
                     const data = await res.json();
                     setArticle(data);
@@ -28,7 +28,7 @@ const NewsReader = ({ articleId, onClose, API_BASE }) => {
 
     if (!articleId) return null;
 
-    const proxiedHero = (article && article.thumbnail) ? `${API_BASE}/api/image-proxy?url=${encodeURIComponent(article.thumbnail)}` : null;
+    const proxiedHero = article && article.thumbnail;
 
     return (
         <div className="news-reader-overlay" style={{

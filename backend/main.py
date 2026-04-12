@@ -7,7 +7,7 @@ from api import router as api_router
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-app = FastAPI(title="GENGA MOVIES", description="API for GENGA MOVIES")
+app = FastAPI(title="MovieBox Web App", description="API for MovieBox Web App")
 
 # Configure CORS
 app.add_middleware(
@@ -23,7 +23,7 @@ app.include_router(api_router, prefix="/api")
 @app.get("/")
 @app.head("/")
 async def root():
-    return {"message": "Welcome to GENGA MOVIES API"}
+    return {"message": "Welcome to MovieBox API"}
 
 @app.get("/api/health")
 @app.head("/api/health")

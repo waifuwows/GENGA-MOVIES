@@ -13,7 +13,7 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
     const [subtitles, setSubtitles] = useState([]);
     const [loadingStream, setLoadingStream] = useState(false);
     const [seasonsData, setSeasonsData] = useState(item.seasons || []); // For MovieBox
-    const [animeEpisodes, setAnimeEpisodes] = useState([]); // For HiAnime
+    const [animeEpisodes, setAnimeEpisodes] = useState([]); // For Anilist
     const [streamError, setStreamError] = useState(null);
     const [fullDetails, setFullDetails] = useState(item);
     const [loadingDetails, setLoadingDetails] = useState(false);
@@ -125,7 +125,7 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
                 setCurrentSeason(next.season);
                 setCurrentEpisode(next.episode);
             } else {
-                // HiAnime logic
+                // Anilist logic
                 setFullDetails(prev => ({ ...prev, episodeId: next.episodeId }));
                 setCurrentEpisode(next.episodeNo);
             }
@@ -190,7 +190,7 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
 
     // Sync Episode ID when Episodes Load (Fix for Initial Load)
     useEffect(() => {
-        if (activeSource === 'hianime' && animeEpisodes.length > 0 && !fullDetails.episodeId) {
+        if (activeSource === 'anilist' && animeEpisodes.length > 0 && !fullDetails.episodeId) {
             const ep = animeEpisodes.find(e => e.number === currentEpisode);
             if (ep) {
                 console.log("[WatchPage] Syncing Episode ID for Auto-Play:", ep.episodeId);
@@ -202,82 +202,86 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
 
     // Fetch Stream URL
     useEffect(() => {
-        const fetchStream = async () => {
-            setLoadingStream(true);
-            setStreamError(null);
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => abortController.abort(), 20000); // 20s timeout
 
-            if (activeSource !== 'moviebox') {
-                setSubtitles([]);
-            }
-
+        const fetchStream = async (retryCount = 0) => {
             try {
-                // --- TV CHANNELS (Direct play, no backend needed) ---
+                setLoadingStream(true);
+                setStreamError(null);
+
+                if (activeSource !== 'moviebox') {
+                    setSubtitles([]);
+                }
+
+                // --- TV CHANNELS ---
                 if (activeSource === 'tv') {
-                    const streamUrl = item.url;
-                    if (!streamUrl) {
-                        setStreamError('No stream URL available for this channel.');
-                        setLoadingStream(false);
-                        return;
+                    if (item.stream_type === 'youtube_hls' && item.yt_id) {
+                        const resolveUrl = `${API_BASE}/api/tv/resolve-youtube/${item.yt_id}`;
+                        const res = await fetch(resolveUrl, { signal: abortController.signal });
+                        const data = await res.json();
+                        if (data.url) {
+                            setStreamUrl(data.url);
+                            setStreamType('hls');
+                            setLoadingStream(false);
+                            return;
+                        } else {
+                            console.warn("YouTube HLS resolution failed, falling back to Embed:", data.error);
+                            const embedUrl = `https://www.youtube.com/embed/${item.yt_id}`;
+                            setStreamUrl(embedUrl);
+                            setStreamType('embed');
+                            setLoadingStream(false);
+                            return;
+                        }
                     }
-                    console.log('[WatchPage] Playing TV:', item.stream_type, streamUrl);
-                    // URL is already prepared by TVDiscovery (autoplay added for YT, direct m3u8 for IPTV)
+
+                    const streamUrl = item.url;
+                    if (!streamUrl) throw new Error('No stream URL available');
                     setStreamUrl(streamUrl);
                     setStreamType(item.stream_type || 'hls');
                     setLoadingStream(false);
                     return;
                 }
 
-
-                // --- HI-ANIME IFRAME STRATEGY (Requested by User) ---
-                if (activeSource === 'hianime') {
-                    let epId = fullDetails.episodeId || item.id;
-                    if ((!epId || !String(epId).includes('ep=')) && animeEpisodes.length > 0) {
-                        const foundEp = animeEpisodes.find(e => e.number === currentEpisode);
-                        if (foundEp) epId = foundEp.episodeId;
-                    }
-
-                    let numericId = null;
-                    if (String(epId).includes('ep=')) {
-                        numericId = String(epId).split('ep=').pop().split('&')[0];
-                    } else if (/^\d+$/.test(String(epId))) {
-                        numericId = String(epId);
-                    }
-
-                    if (numericId && /^\d+$/.test(numericId)) {
-                        const megaplayUrl = `https://megaplay.buzz/stream/s-2/${numericId}/${animeLanguage}`;
-                        const proxyUrl = `${API_BASE}/api/iframe-proxy?url=${encodeURIComponent(megaplayUrl)}`;
-
-                        console.log("[WatchPage] Using Megaplay Iframe (Proxy):", numericId);
+                // --- ANILIST MEGAPLAY ---
+                if (activeSource === 'anilist') {
+                    const epNum = currentEpisode || 1;
+                    const animeId = item.id;
+                    const sourcesUrl = `${API_BASE}/api/anime/sources?episode_id=${epNum}&anime_id=${animeId}&category=${animeLanguage}`;
+                    
+                    const res = await fetch(sourcesUrl, { signal: abortController.signal });
+                    const data = await res.json();
+                    const sourceObj = data.url ? data : (data.data?.sources?.[0] || null);
+                    
+                    if (sourceObj && sourceObj.url) {
+                        const proxyUrl = `${API_BASE}/api/iframe-proxy?url=${encodeURIComponent(sourceObj.url)}`;
                         setStreamUrl(proxyUrl);
                         setStreamType('embed');
                         setLoadingStream(false);
                         return;
+                    } else {
+                        throw new Error("Anime stream not found");
                     }
                 }
-                // -------------------------------------------
 
+                // --- MOVIEBOX / FALLBACK ---
                 let url;
+                let method = 'GET';
                 if (activeSource === 'moviebox') {
+                    method = 'POST';
                     url = `${API_BASE}/api/stream?mode=url&query=${encodeURIComponent(item.title)}`;
                     if (item.id) url += `&id=${encodeURIComponent(item.id)}`;
                     if (item.type) url += `&content_type=${encodeURIComponent(item.type)}`;
                     if (item.type !== 'movie' && currentSeason && currentEpisode) {
                         url += `&season=${currentSeason}&episode=${currentEpisode}`;
                     }
-                } else if (activeSource === 'anicli') {
-                    let epId = fullDetails.episodeId || item.id;
-                    if (activeSource === 'anicli' && animeEpisodes.length > 0) {
-                        const foundEp = animeEpisodes.find(e => String(e.number) === String(currentEpisode));
-                        if (foundEp) epId = foundEp.id;
-                    }
-                    url = `${API_BASE}/api/anicli/stream?episode_id=${encodeURIComponent(epId)}`;
                 } else {
                     const epId = fullDetails.episodeId || item.episodeId;
                     if (!epId) throw new Error("No episode ID found.");
                     url = `${API_BASE}/api/anime/sources?episode_id=${encodeURIComponent(epId)}&category=${animeLanguage}`;
                 }
 
-                const res = await fetch(url, { method: activeSource === 'moviebox' ? 'POST' : 'GET' });
+                const res = await fetch(url, { method, signal: abortController.signal });
                 if (!res.ok) throw new Error(`Server error: ${res.status}`);
                 const data = await res.json();
 
@@ -298,28 +302,36 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
                                 url: s.url.startsWith('http') ? s.url : `${API_BASE}${s.url.startsWith('/') ? '' : '/'}${s.url}`
                             })));
                         }
+                        setLoadingStream(false);
                     } else throw new Error(data.message || "Failed to get stream");
                 } else {
-                    // Anime API fallback
                     if (data.url || (data.data && data.data.sources && data.data.sources.length > 0)) {
                         const s = data.url ? data : data.data.sources[0];
                         setStreamUrl(s.url);
                         setStreamType(s.type === 'embed' ? 'embed' : 'hls');
-                        if (data.data?.subtitles) setSubtitles(data.data.subtitles);
+                        setLoadingStream(false);
                     } else throw new Error("Stream not found");
                 }
             } catch (err) {
+                if (err.name === 'AbortError') return;
                 console.error("Stream Fetch Error:", err);
-                setStreamError(err.message);
-            } finally {
-                setLoadingStream(false);
+                if (retryCount < 1) {
+                    console.log("[WatchPage] Retrying...");
+                    setTimeout(() => fetchStream(retryCount + 1), 1000);
+                } else {
+                    setStreamError(err.message === 'signal is aborted' ? 'Request timed out' : err.message);
+                    setLoadingStream(false);
+                }
             }
         };
 
-        // Fetch immediately or with minimal delay to prevent rapid duplicate calls
-        const timer = setTimeout(fetchStream, 50);
-        return () => clearTimeout(timer);
-    }, [currentSeason, currentEpisode, activeSource, item.id, item.type, API_BASE, fullDetails.episodeId, animeLanguage, retryCounter]);
+        fetchStream();
+
+        return () => {
+            abortController.abort();
+            clearTimeout(timeoutId);
+        };
+    }, [currentSeason, currentEpisode, activeSource, item.id, item.type, API_BASE, fullDetails.episodeId, animeLanguage]);
 
     return (
         <div style={{ position: 'fixed', inset: 0, background: '#0a0a0f', zIndex: 200, display: 'flex', flexDirection: 'column', color: '#fff', fontFamily: "'Inter', sans-serif" }}>
@@ -331,7 +343,7 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
                     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <span style={{ fontWeight: 'bold', fontSize: '1.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
                         <span style={{ fontSize: '1rem', color: '#6366f1', fontWeight: 'bold' }}>
-                            {isTVChannel ? '🔴 Live' : isMovieContent ? 'Movie' : (activeSource === 'hianime' ? `Episode ${currentEpisode || 1}` : `S${currentSeason || 1} E${currentEpisode || 1}`)}
+                            {isTVChannel ? '🔴 Live' : isMovieContent ? 'Movie' : (activeSource === 'anilist' ? `Episode ${currentEpisode || 1}` : `S${currentSeason || 1} E${currentEpisode || 1}`)}
                         </span>
                     </div>
                 </div>
@@ -410,7 +422,7 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Episodes</h3>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    {activeSource === 'hianime' && (
+                                    {activeSource === 'anilist' && (
                                         <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
                                             <button onClick={() => setAnimeLanguage('sub')} style={{ padding: '4px 8px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: animeLanguage === 'sub' ? '#6366f1' : 'transparent', color: 'white', fontSize: '0.7rem' }}>SUB</button>
                                             <button onClick={() => setAnimeLanguage('dub')} style={{ padding: '4px 8px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: animeLanguage === 'dub' ? '#6366f1' : 'transparent', color: 'white', fontSize: '0.7rem' }}>DUB</button>
@@ -463,7 +475,7 @@ const WatchPage = ({ item, initialSeason, initialEpisode, API_BASE, onBack, prel
 
                         </div>
                         <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))', gap: '8px' }}>
-                            {activeSource === 'hianime' ? (
+                            {activeSource === 'anilist' ? (
                                 animeEpisodes.map(ep => (
                                     <button
                                         key={ep.episodeId}

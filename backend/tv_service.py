@@ -3,7 +3,7 @@ import re
 
 class TVService:
     def __init__(self):
-        self.base_url = "https://raw.githubusercontent.com/famelack/famelack-channels/main/channels/raw"
+        self.base_url = "https://raw.githubusercontent.com/famelack/famelack-data/main/tv/raw"
         self.client = httpx.AsyncClient(timeout=20.0)
         self.cache = {}
 
@@ -111,57 +111,50 @@ class TVService:
         return None, None
 
     def _format_channel(self, c: dict):
-        """
-        Normalizes a Famelack channel object to our standard item format.
-        Schema: nanoid, name, iptv_urls (list), youtube_urls (list), language, country, isGeoBlocked
-
-        For YouTube channels:
-          - Uses ythls.armelin.one/channel/VIDEO_ID.m3u8 to convert to HLS (bypasses Error 153)
-          - This is the same approach used by TV Garden and similar apps
-        For IPTV channels:
-          - Uses the direct M3U8 URL with HLS.js
-        """
         name = c.get('name', 'Unknown Channel')
 
-        # Filter out empty/blank URLs from both lists
-        iptv_urls = [u for u in (c.get('iptv_urls') or []) if u and u.strip()]
+        iptv_urls = [u for u in (c.get('stream_urls') or []) if u and u.strip()]
         youtube_urls = [u for u in (c.get('youtube_urls') or []) if u and u.strip()]
 
+        # Priority 1: Direct IPTV (HLS)
         if iptv_urls:
-            # Direct HLS stream — play with HLS.js
-            stream_url = iptv_urls[0]
-            stream_type = 'hls'
-        elif youtube_urls:
+            return {
+                "id": c.get('nanoid', name.replace(' ', '_').lower()),
+                "title": name,
+                "poster_url": c.get('logo', ''),
+                "url": iptv_urls[0],
+                "stream_type": "hls",
+                "source": "tv",
+                "type": "channel"
+            }
+        
+        # Priority 2: YouTube Live (Local HLS resolution via yt-dlp)
+        if youtube_urls:
             yt_url = youtube_urls[0]
             yt_id, id_type = self._extract_youtube_id(yt_url)
-
             if yt_id:
-                # Use ythls.armelin.one proxy — converts YouTube live to HLS m3u8
-                # This bypasses YouTube embed restrictions (Error 150/153)
-                # Same approach used by TV Garden / gengas-garden
-                stream_url = f"https://ythls.armelin.one/channel/{yt_id}.m3u8"
-                stream_type = 'hls'
-            else:
-                # Fallback to embed (may show Error 153 for some channels)
-                stream_url = yt_url
-                stream_type = 'embed'
-        else:
-            # No valid stream URL — skip this channel entirely
-            return None
-
-        return {
-            "id": c.get('nanoid', name.replace(' ', '_').lower()),
-            "title": name,
-            "poster_url": c.get('logo', ''),
-            "url": stream_url,
-            "all_urls": iptv_urls,
-            "language": c.get('language', ''),
-            "country": c.get('country', ''),
-            "is_geo_blocked": c.get('isGeoBlocked', False),
-            "stream_type": stream_type,
-            "source": "tv",
-            "type": "channel"
-        }
+                return {
+                    "id": c.get('nanoid', name.replace(' ', '_').lower()),
+                    "title": name,
+                    "poster_url": c.get('logo', ''),
+                    "yt_id": yt_id,
+                    "stream_type": "youtube_hls",
+                    "source": "tv",
+                    "type": "channel"
+                }
+            
+            # Fallback: YouTube Embed
+            return {
+                "id": c.get('nanoid', name.replace(' ', '_').lower()),
+                "title": name,
+                "poster_url": c.get('logo', ''),
+                "url": yt_url,
+                "stream_type": "embed",
+                "source": "tv",
+                "type": "channel"
+            }
+        
+        return None
 
     async def close(self):
         await self.client.aclose()

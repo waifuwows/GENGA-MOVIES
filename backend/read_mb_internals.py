@@ -1,5 +1,5 @@
-import moviebox_api.requests as req
-import moviebox_api.constants as const
+import moviebox_api.v1.requests as req
+import moviebox_api.v1.constants as const
 import inspect
 
 src_req = inspect.getsource(req)
