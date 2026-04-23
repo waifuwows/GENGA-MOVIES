@@ -3,6 +3,7 @@ import asyncio
 import io
 import zipfile
 from typing import List, Optional, Any
+from urllib.parse import quote
 
 class MangaService:
     BASE_URL = "https://api-consumet-org-x46x.onrender.com"
