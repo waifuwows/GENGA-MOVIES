@@ -2290,7 +2290,7 @@ async def manga_save_local(chapter_id: str, manga_title: str, chapter_title: str
     return result
 
 @router.get("/manga/image-proxy")
-async def manga_image_proxy(url: str, referer: str = "https://mangakakalot.com/"):
+async def manga_image_proxy(url: str, referer: str = "https://mangapill.com/"):
     """
     Proxies images with a customizable referer to bypass hotlinking protections.
     Adds CORS and CORP headers to ensure browsers allow embedding.

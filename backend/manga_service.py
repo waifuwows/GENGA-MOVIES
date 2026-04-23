@@ -6,26 +6,68 @@ from typing import List, Optional, Any
 
 class MangaService:
     BASE_URL = "https://api-consumet-org-x46x.onrender.com"
-    PROVIDER = "mangakakalot"
+    PROVIDER = "mangapill"
 
     @staticmethod
     async def search(query: str) -> List[dict]:
         """
         Searches for manga using Consumet API.
+        Tries both path styles: /manga/provider/query and /manga/provider/search?query=query
         """
         async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                url = f"{MangaService.BASE_URL}/manga/{MangaService.PROVIDER}/{query}"
-                resp = await client.get(url)
-                if resp.status_code != 200:
-                    print(f"[MangaService] Search error {resp.status_code} for {url}: {resp.text[:200]}")
-                    return []
-                
+            # Try Style 1: /manga/provider/query
+            url1 = f"{MangaService.BASE_URL}/manga/{MangaService.PROVIDER}/{query}"
+            # Try Style 2: /manga/provider/search?query=query
+            url2 = f"{MangaService.BASE_URL}/manga/{MangaService.PROVIDER}/search?query={quote(query)}"
+            
+            for url in [url1, url2]:
                 try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    
                     data = resp.json()
                     results = data.get('results', data)
                     if not isinstance(results, list):
-                        return []
+                        continue
+                    
+                    if not results:
+                        continue
+
+                    return [{
+                        "id": item.get('id'),
+                        "title": item.get('title'),
+                        "poster_url": item.get('image') or item.get('poster') or item.get('cover'),
+                        "type": "manga",
+                        "source": "manga"
+                    } for item in results]
+                except Exception as e:
+                    print(f"[MangaService] Search attempt failed for {url}: {e}")
+                    continue
+            
+            return []
+
+    @staticmethod
+    async def get_popular(page: int = 1) -> List[dict]:
+        """
+        Fetches popular manga from the provider.
+        """
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Try Style 1: /manga/provider/popular
+            url1 = f"{MangaService.BASE_URL}/manga/{MangaService.PROVIDER}/popular?page={page}"
+            # Try Style 2: /manga/provider
+            url2 = f"{MangaService.BASE_URL}/manga/{MangaService.PROVIDER}"
+            
+            for url in [url1, url2]:
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    
+                    data = resp.json()
+                    results = data.get('results', data)
+                    if not isinstance(results, list) or not results:
+                        continue
                     
                     return [{
                         "id": item.get('id'),
@@ -34,40 +76,11 @@ class MangaService:
                         "type": "manga",
                         "source": "manga"
                     } for item in results]
-                except Exception as json_err:
-                    print(f"[MangaService] JSON error for {url}: {json_err} | Body: {resp.text[:500]}")
-                    return []
-            except Exception as e:
-                print(f"[MangaService] Search error: {e}")
-                return []
-
-    @staticmethod
-    async def get_popular(page: int = 1) -> List[dict]:
-        """
-        Fetches popular manga from the provider.
-        """
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                url = f"{MangaService.BASE_URL}/manga/{MangaService.PROVIDER}/popular?page={page}"
-                resp = await client.get(url)
-                if resp.status_code != 200:
-                    return []
-                
-                data = resp.json()
-                results = data.get('results', data)
-                if not isinstance(results, list):
-                    return []
-                
-                return [{
-                    "id": item.get('id'),
-                    "title": item.get('title'),
-                    "poster_url": item.get('image') or item.get('poster') or item.get('cover'),
-                    "type": "manga",
-                    "source": "manga"
-                } for item in results]
-            except Exception as e:
-                print(f"[MangaService] Popular error: {e}")
-                return []
+                except Exception as e:
+                    print(f"[MangaService] Popular attempt failed for {url}: {e}")
+                    continue
+            
+            return []
 
     @staticmethod
     async def get_info(manga_id: str) -> Optional[dict]:
@@ -130,7 +143,7 @@ class MangaService:
                 return [{
                     "page": i + 1,
                     "img": p.get('img') if isinstance(p, dict) else p,
-                    "headerForImage": {"Referer": "https://mangakakalot.com/"}
+                    "headerForImage": {"Referer": "https://mangapill.com/"}
                 } for i, p in enumerate(pages)]
             except Exception as e:
                 print(f"[MangaService] Pages error: {e}")
