@@ -5,8 +5,8 @@ import zipfile
 from typing import List, Optional, Any
 
 class MangaService:
-    BASE_URL = "https://api-consumet-org-mswp.onrender.com"
-    PROVIDER = "mangapill"
+    BASE_URL = "https://api-consumet-org-x46x.onrender.com"
+    PROVIDER = "mangakakalot"
 
     @staticmethod
     async def search(query: str) -> List[dict]:
@@ -130,7 +130,7 @@ class MangaService:
                 return [{
                     "page": i + 1,
                     "img": p.get('img') if isinstance(p, dict) else p,
-                    "headerForImage": {"Referer": "https://mangapill.com/"}
+                    "headerForImage": {"Referer": "https://mangakakalot.com/"}
                 } for i, p in enumerate(pages)]
             except Exception as e:
                 print(f"[MangaService] Pages error: {e}")

@@ -1,161 +1,115 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
+import styles from './Sidebar.module.css';
+import { navItems } from './sidebarConfig';
+
+// Sub-component: Logo
+const Logo = React.memo(({ isOpen, onToggle }) => (
+    <div className={styles.logoSection}>
+        <div className={styles.brand}>
+            <h1>GENGA</h1>
+            <p>Movies</p>
+        </div>
+        <button
+            type="button"
+            className={styles.toggleBtn}
+            onClick={onToggle}
+            aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
+            aria-expanded={isOpen}
+        >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {isOpen ? <polyline points="15 18 9 12 15 6"></polyline> : <polyline points="9 18 15 12 9 6"></polyline>}
+            </svg>
+        </button>
+    </div>
+));
+
+// Sub-component: Navigation Item
+const NavItem = React.memo(({ item, isActive, isOpen, onClick }) => (
+    <button
+        type="button"
+        className={`${styles.navItem} ${isActive ? styles.active : ''}`}
+        onClick={() => onClick(item.id)}
+        aria-current={isActive ? 'page' : undefined}
+    >
+        <svg
+            className={styles.navIcon}
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            {item.icon}
+        </svg>
+        <span className={styles.navLabel}>{item.label}</span>
+        {!isOpen && <span className={styles.tooltip}>{item.label}</span>}
+    </button>
+));
+
+// Sub-component: Status Footer
+const StatusFooter = React.memo(({ isOpen, serverStatus, lastUpdate }) => (
+    <footer className={styles.footer}>
+        <div className={styles.statusContainer}>
+            <div className={`${styles.statusDot} ${serverStatus === 'operational' ? styles.online : styles.offline}`} />
+            {isOpen && (
+                <div className={styles.statusInfo}>
+                    <span className={styles.statusText}>
+                        {serverStatus === 'operational' ? 'Systems Normal' : 'Service Issue'}
+                    </span>
+                    <span className={styles.statusUpdate}>Updated {lastUpdate}</span>
+                </div>
+            )}
+        </div>
+    </footer>
+));
 
 const Sidebar = ({ activeSource, onChangeSource, serverStatus, isOpen, onToggle }) => {
-    const navItems = [
-        { id: 'home', label: 'Home', icon: <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path> },
-        { id: 'anilist', label: 'Anime', icon: <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z"></path> },
-        { id: 'manga', label: 'Manga', icon: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></> },
-        { id: 'tv', label: 'Live TV', icon: <><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></> },
-        { id: 'news', label: 'News', icon: <><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8z"></path></> },
-        { id: 'music', label: 'Music', icon: <><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></> },
-        { id: 'radio', label: 'Radio', icon: <><rect x="2" y="8" width="20" height="14" rx="2" ry="2"></rect><path d="M12 2v6"></path><circle cx="8" cy="15" r="3"></circle><line x1="16" y1="12" x2="18" y2="12"></line><line x1="16" y1="15" x2="18" y2="15"></line><line x1="16" y1="18" x2="18" y2="18"></line></> },
-        { id: 'history', label: 'History', icon: <><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></> }
-    ];
+    // Memoize navigation list to prevent unnecessary re-renders
+    const navigationList = useMemo(() => (
+        <nav className={styles.nav} role="navigation" aria-label="Main Navigation">
+            {navItems.map(item => (
+                <NavItem
+                    key={item.id}
+                    item={item}
+                    isActive={activeSource === item.id}
+                    isOpen={isOpen}
+                    onClick={onChangeSource}
+                />
+            ))}
+        </nav>
+    ), [activeSource, isOpen, onChangeSource]);
+
+    // Handle clicking outside to close on mobile
+    const handleOverlayClick = useCallback(() => {
+        if (window.innerWidth <= 1024 && isOpen) {
+            onToggle();
+        }
+    }, [isOpen, onToggle]);
 
     return (
-        <aside style={{
-            width: isOpen ? '240px' : '70px',
-            height: '100vh',
-            position: 'sticky',
-            top: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'rgba(0, 0, 0, 0.4)',
-            backdropFilter: 'blur(20px)',
-            borderRight: '1px solid var(--border-glass)',
-            padding: '2rem 1rem',
-            zIndex: 100,
-            flexShrink: 0,
-            transition: 'width 0.3s ease'
-        }}>
-            {/* Logo Area */}
-            <div style={{
-                padding: isOpen ? '0 1rem' : '0',
-                marginBottom: '3rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isOpen ? 'space-between' : 'center'
-            }}>
-                {isOpen && (
-                    <div>
-                        <h1 style={{
-                            fontSize: '1.5rem',
-                            margin: 0,
-                            background: 'linear-gradient(135deg, #fff 0%, var(--primary) 100%)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            fontWeight: '800',
-                            letterSpacing: '-1px'
-                        }}>
-                            GENGA
-                        </h1>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px', letterSpacing: '2px', textTransform: 'uppercase' }}>Movies</p>
-                    </div>
-                )}
+        <>
+            {/* Click-outside overlay for mobile/tablet */}
+            <div 
+                className={`${styles.overlay} ${isOpen ? styles.visible : ''}`} 
+                onClick={handleOverlayClick}
+            />
+            
+            <aside className={`${styles.sidebar} ${!isOpen ? styles.collapsed : ''}`}>
+                <Logo isOpen={isOpen} onToggle={onToggle} />
+                
+                {navigationList}
 
-                <button
-                    onClick={onToggle}
-                    style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer',
-                        padding: '0.5rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}
-                >
-                    {isOpen ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                    ) : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    )}
-                </button>
-            </div>
-
-            {/* Navigation */}
-            <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {navItems.map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => onChangeSource(item.id)}
-                        title={!isOpen ? item.label : ''}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: isOpen ? 'flex-start' : 'center',
-                            gap: '12px',
-                            padding: '12px 16px',
-                            background: activeSource === item.id ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                            border: '1px solid',
-                            borderColor: activeSource === item.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                            borderRadius: '12px',
-                            color: activeSource === item.id ? '#fff' : 'var(--text-muted)',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            textAlign: 'left',
-                            fontSize: '0.95rem',
-                            fontWeight: activeSource === item.id ? '600' : '400',
-                            width: '100%'
-                        }}
-                        onMouseEnter={e => {
-                            if (activeSource !== item.id) {
-                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                e.currentTarget.style.color = 'var(--text-secondary)';
-                            }
-                        }}
-                        onMouseLeave={e => {
-                            if (activeSource !== item.id) {
-                                e.currentTarget.style.background = 'transparent';
-                                e.currentTarget.style.color = 'var(--text-muted)';
-                            }
-                        }}
-                    >
-                        <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            style={{ opacity: activeSource === item.id ? 1 : 0.7 }}
-                        >
-                            {item.icon}
-                        </svg>
-                        {isOpen && item.label}
-                    </button>
-                ))}
-            </nav>
-
-            {/* Status Footer */}
-            <div style={{ marginTop: 'auto', padding: isOpen ? '1rem' : '1rem 0', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', alignItems: isOpen ? 'flex-start' : 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: 'var(--text-muted)', justifyContent: isOpen ? 'flex-start' : 'center' }}>
-                    <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        background: serverStatus === 'operational' ? '#22c55e' : '#ef4444',
-                        boxShadow: serverStatus === 'operational' ? '0 0 8px #22c55e' : 'none',
-                        transition: 'background 0.3s'
-                    }}></div>
-                    {isOpen && (
-                        <span>
-                            {serverStatus === 'operational' ? 'Systems Normal' : 'Service Issue'}
-                        </span>
-                    )}
-                </div>
-                {isOpen && (
-                    <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', marginTop: '6px', marginLeft: '18px' }}>
-                        Updated 5m ago
-                    </div>
-                )}
-            </div>
-        </aside>
+                <StatusFooter 
+                    isOpen={isOpen} 
+                    serverStatus={serverStatus} 
+                    lastUpdate="just now" 
+                />
+            </aside>
+        </>
     );
 };
 
-export default Sidebar;
+export default React.memo(Sidebar);

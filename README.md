@@ -158,8 +158,8 @@ If you are running the backend locally and wish to change where it pulls data fr
 | Service | Location | Variable | Current URL |
 | :--- | :--- | :--- | :--- |
 | **Music (GaanaPy)** | `backend/music_service.py` | `self.base_url` | `https://gaanapy-a8jf.onrender.com` |
-| **Manga (Consumet)** | `backend/manga_service.py` | `BASE_URL` | `https://api-consumet-org-mswp.onrender.com` |
-| **News (ANN)** | `frontend/src/App.jsx` | - | `https://api-consumet-org-mswp.onrender.com` |
+| **Manga (Consumet)** | `backend/manga_service.py` | `BASE_URL` | `https://api-consumet-org-x46x.onrender.com` |
+| **News (ANN)** | `frontend/src/App.jsx` | - | `https://api-consumet-org-x46x.onrender.com` |
 
 ### 2. Cloud vs Local Routing (Frontend)
 The application uses a hybrid routing model defined in `frontend/src/App.jsx`.

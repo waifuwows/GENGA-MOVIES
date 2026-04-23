@@ -1695,11 +1695,21 @@ async def get_anime_episodes(anime_id: str):
         if not info: 
             return {"status": 404, "data": {"episodes": []}}
         
+        # Calculate how many episodes have actually released
         count = info.get('episodes_count')
+        next_ep = info.get('next_episode')
+        streaming_count = info.get('streaming_episodes_count', 0)
+        schedule_count = info.get('aired_episodes_from_schedule', 0)
         
-        # If episodes_count is None (airing), check if we have airing episode info
-        if not count and info.get('next_episode'):
-            count = int(info['next_episode']) - 1
+        # Priority 1: Use airingSchedule (Historical data - most accurate for released)
+        if schedule_count > 0:
+            count = schedule_count
+        # Priority 2: Use streaming_episodes_count
+        elif streaming_count > 0:
+            count = streaming_count
+        # Priority 3: Use next_episode - 1 if airing
+        elif next_ep:
+            count = int(next_ep) - 1
             
         if not count: count = 1 # Fallback
         
@@ -2280,7 +2290,7 @@ async def manga_save_local(chapter_id: str, manga_title: str, chapter_title: str
     return result
 
 @router.get("/manga/image-proxy")
-async def manga_image_proxy(url: str, referer: str = "https://mangapill.com/"):
+async def manga_image_proxy(url: str, referer: str = "https://mangakakalot.com/"):
     """
     Proxies images with a customizable referer to bypass hotlinking protections.
     Adds CORS and CORP headers to ensure browsers allow embedding.

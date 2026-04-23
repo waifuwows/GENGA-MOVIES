@@ -8,6 +8,7 @@
   --bg-glass-light: rgba(255, 255, 255, 0.03);
 
   --primary: #6366f1;
+  --primary-rgb: 99, 102, 241;
   --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   --primary-glow: rgba(99, 102, 241, 0.4);
 

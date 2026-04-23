@@ -104,8 +104,8 @@ const detectLocalServer = async (onProgress) => {
 };
 
 // Define available backends
-const CLOUD_BASE = 'https://moviebox-knh8.onrender.com';
-const NEWS_API_BASE = 'https://api-consumet-org-mswp.onrender.com';
+const CLOUD_BASE = 'https://genga-movies.onrender.com';
+const NEWS_API_BASE = 'https://api-consumet-org-x46x.onrender.com';
 
 
 function App() {
@@ -172,7 +172,7 @@ function App() {
 
     // Helper to determine target base URL for a given source
     const getTargetBase = (src = activeSource) => {
-        return (src === 'anilist' || src === 'manga' || src === 'music' || src === 'news' || src === 'tv' || src === 'radio')
+        return (src === 'home' || src === 'anilist' || src === 'manga' || src === 'music' || src === 'news' || src === 'tv' || src === 'radio')
             ? CLOUD_BASE
             : localServerURL;
     };
@@ -413,14 +413,16 @@ function App() {
                 // Backend already normalizes anime results
                 setResults(Array.isArray(data) ? data : []);
             } else if (activeSource === 'manga') {
-                setResults(data.results.map(it => ({
+                setResults((data.results || []).map(it => ({
                     ...it,
                     source: 'manga',
                     poster_url: `${base}/api/manga/image-proxy?url=${encodeURIComponent(it.poster_url)}`
                 })));
-            } else if (activeSource === 'music') { // Added music search normalization
-                setResults(data.results || []);
-                setResults(data.results.map(it => {
+            } else if (activeSource === 'music') {
+                setResults((data.results || []).map(it => ({ ...it, source: 'music' })));
+            } else {
+                // Default MovieBox/Home normalization
+                setResults((data.results || []).map(it => {
                     let determinedType = it.type;
                     if (typeof it.type !== 'string') {
                         determinedType = it.type === 2 ? 'series' : 'movie';
@@ -916,13 +918,15 @@ function App() {
         <div className="app" style={{ display: 'flex', flexDirection: 'row', maxWidth: '100vw', overflow: 'hidden' }}>
 
             {/* NEW SIDEBAR */}
-            <Sidebar
-                activeSource={activeSource}
-                onChangeSource={setActiveSource}
-                serverStatus={serverStatus}
-                isOpen={isSidebarOpen}
-                onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-            />
+            {!videoPlayerData && !mangaReaderItem && (
+                <Sidebar
+                    activeSource={activeSource}
+                    onChangeSource={setActiveSource}
+                    serverStatus={serverStatus}
+                    isOpen={isSidebarOpen}
+                    onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+                />
+            )}
 
             {/* MAIN CONTENT AREA */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflowY: 'auto', position: 'relative' }}>
@@ -1035,7 +1039,7 @@ function App() {
                                                 transition: 'all 0.2s'
                                             }}
                                         >
-                                            {f === 'anilist' ? 'Anime' : f}
+                                            {f === 'anilist' ? 'Anime' : f === 'moviebox' ? 'Home' : f}
                                         </button>
                                     ))}
                                 </div>
@@ -1183,7 +1187,7 @@ function App() {
                                                 }}>
                                                     {group.items.map((item, idx) => (
                                                         group.type === 'news' ?
-                                                            <NewsCard key={item.id || idx} item={item} onClick={(it) => setNewsReaderItem(it)} API_BASE={CLOUD_BASE} /> :
+                                                            <NewsCard key={item.id || idx} item={item} onClick={(it) => setNewsReaderItem(it)} API_BASE={NEWS_API_BASE} /> :
                                                             (activeSource === 'music' ?
                                                                 <MusicCard key={`${item.id}-${index}-${idx}`} movie={item} onClick={handleItemClick} /> :
                                                                 <MovieCard key={`${item.id}-${index}-${idx}`} movie={item} onClick={handleItemClick} />)
@@ -1306,7 +1310,7 @@ function App() {
                 <NewsReader
                     articleId={newsReaderItem.id}
                     onClose={() => setNewsReaderItem(null)}
-                    API_BASE={CLOUD_BASE}
+                    API_BASE={NEWS_API_BASE}
                 />
             )}
 

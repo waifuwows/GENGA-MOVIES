@@ -1,4 +1,5 @@
 import httpx
+import time
 from typing import List, Optional, Dict, Any
 
 class AnilistService:
@@ -121,6 +122,22 @@ class AnilistService:
             genres
             averageScore
             seasonYear
+            streamingEpisodes {
+              title
+              thumbnail
+              url
+              site
+            }
+            nextAiringEpisode {
+              episode
+              airingAt
+            }
+            airingSchedule(perPage: 25) {
+              nodes {
+                episode
+                airingAt
+              }
+            }
           }
         }
         """
@@ -136,10 +153,13 @@ class AnilistService:
                 "poster_url": m['coverImage']['extraLarge'] or m['coverImage']['large'],
                 "banner_url": m['bannerImage'],
                 "episodes_count": m['episodes'],
-                "status": m['status'],
                 "genres": m['genres'],
                 "rating": (m['averageScore'] / 10) if m['averageScore'] else 0,
                 "year": m['seasonYear'],
+                "status": m['status'],
+                "streaming_episodes_count": len(m.get('streamingEpisodes', [])),
+                "aired_episodes_from_schedule": max([s['episode'] for s in m.get('airingSchedule', {}).get('nodes', []) if s['airingAt'] < time.time()] + [0]),
+                "next_episode": m.get('nextAiringEpisode', {}).get('episode') if m.get('nextAiringEpisode') else None,
                 "type": "anime",
                 "source": "anilist",
                 "hasFullDetails": True
