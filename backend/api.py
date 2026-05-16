@@ -1704,33 +1704,36 @@ async def get_anime_episodes(anime_id: str):
         # Default to 0, then try to find the best estimate
         count = 0
         
-        ep_count = info.get('episodes_count')
+        ep_count = info.get('episodes_count', 0) or 0
         next_ep = info.get('next_episode')
         streaming_count = info.get('streaming_episodes_count', 0)
         schedule_count = info.get('aired_episodes_from_schedule', 0)
         status = info.get('status')
         
-        # Priority 1: Use airingSchedule (Historical data - most accurate for released)
-        if schedule_count and schedule_count > 0:
-            count = schedule_count
-        # Priority 2: Use next_episode - 1 if it's currently airing
-        elif next_ep and next_ep > 1:
-            count = int(next_ep) - 1
-        # Priority 3: Use streaming_episodes_count
-        elif streaming_count and streaming_count > 0:
-            count = streaming_count
-        # Priority 4: Use episodes_count if the anime is FINISHED
-        elif status == 'FINISHED' and ep_count:
-            count = ep_count
-        # Priority 5: Fallback for NEW or ongoing anime without schedule yet
-        elif status == 'RELEASING':
-            count = 1
+        count = 0
+        
+        # 1. Start with the most reliable historical data
+        count = max(schedule_count, streaming_count)
+        
+        # 2. If it's FINISHED, use ep_count (total)
+        if status == 'FINISHED' and ep_count > 0:
+            count = max(count, ep_count)
             
-        # Final safety check
-        if not count or count < 1:
-            count = ep_count if (ep_count and ep_count > 0) else 1
+        # 3. If it's RELEASING, use next_ep - 1
+        if status == 'RELEASING' and next_ep and next_ep > 1:
+            count = max(count, next_ep - 1)
             
-        print(f"[Anilist Episodes] ID: {anime_id} | Status: {status} | Final Count: {count} (Sched: {schedule_count}, Stream: {streaming_count}, Next: {next_ep})")
+        # 4. Final safety fallbacks
+        if count < 1:
+            if status == 'FINISHED' and ep_count > 0:
+                count = ep_count
+            elif status == 'RELEASING':
+                # Try to fallback to total episodes if it just started or metadata is missing
+                count = ep_count if (ep_count and ep_count > 0) else 1
+            else:
+                count = 1
+
+        print(f"[Anilist Episodes] ID: {anime_id} | Status: {status} | Final Count: {count} (Sched: {schedule_count}, Stream: {streaming_count}, Next: {next_ep}, Total: {ep_count})")
         
         episodes = []
         for i in range(1, int(count) + 1):

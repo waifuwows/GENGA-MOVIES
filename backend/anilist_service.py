@@ -254,21 +254,29 @@ class AnilistService:
             data = await AnilistService._query(query, {"id": int(anime_id)})
             if not data: return None
             
-            m = data.get('Media', {})
+            m = data.get('Media')
+            if not m:
+                print(f"[AnilistService] Media object is null for {anime_id}")
+                return None
+                
+            # Safe title extraction
+            titles = m.get('title', {})
+            title_text = titles.get('english') or titles.get('romaji') or titles.get('native') or "Unknown Anime"
+            
             result = {
                 "id": str(m['id']),
-                "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
-                "plot": m['description'],
-                "poster_url": m['coverImage']['extraLarge'] or m['coverImage']['large'],
-                "banner_url": m['bannerImage'],
-                "episodes_count": m['episodes'],
-                "genres": m['genres'],
-                "rating": (m['averageScore'] / 10) if m['averageScore'] else 0,
-                "year": m['seasonYear'],
-                "status": m['status'],
+                "title": title_text,
+                "plot": m.get('description', 'No description available.'),
+                "poster_url": (m.get('coverImage') or {}).get('extraLarge') or (m.get('coverImage') or {}).get('large'),
+                "banner_url": m.get('bannerImage'),
+                "episodes_count": m.get('episodes'),
+                "genres": m.get('genres', []),
+                "rating": (m.get('averageScore', 0) / 10) if m.get('averageScore') else 0,
+                "year": m.get('seasonYear'),
+                "status": m.get('status'),
                 "streaming_episodes_count": len(m.get('streamingEpisodes', [])),
-                "aired_episodes_from_schedule": max([s['episode'] for s in m.get('airingSchedule', {}).get('nodes', []) if s['airingAt'] < time.time()] + [0]),
-                "next_episode": m.get('nextAiringEpisode', {}).get('episode') if m.get('nextAiringEpisode') else None,
+                "aired_episodes_from_schedule": max([s['episode'] for s in (m.get('airingSchedule') or {}).get('nodes', []) if s['airingAt'] < time.time()] + [0]),
+                "next_episode": (m.get('nextAiringEpisode') or {}).get('episode') if m.get('nextAiringEpisode') else None,
                 "type": "anime",
                 "source": "anilist",
                 "hasFullDetails": True
