@@ -603,8 +603,8 @@ async def warmup_session() -> None:
         search_instance = Search(session=session, query="test")
         await search_instance.get_content_model()
         
-        # Anilist warmup - temporarily disabled to debug empty lists
-        # asyncio.create_task(AnilistService.warmup())
+        # Anilist warmup
+        asyncio.create_task(AnilistService.warmup())
         
         print("Session warmed up successfully.")
     except Exception as e:

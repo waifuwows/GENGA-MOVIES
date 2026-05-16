@@ -47,7 +47,7 @@ class AnilistService:
                         json_data = resp.json()
                         if 'errors' in json_data:
                             print(f"[AnilistService] GraphQL Errors for query: {json_data['errors']}")
-                        return json_data.get('data', {})
+                        return json_data.get('data') or {}
                     elif resp.status_code == 429:
                         print(f"[AnilistService] Rate limited (429). Attempt {attempt + 1}/{max_retries}.")
                         await asyncio.sleep(2.0 * (attempt + 1))
@@ -105,7 +105,18 @@ class AnilistService:
                     "source": "anilist"
                 })
         
-        if results:
+        # DEBUG: If results are empty, add a placeholder to diagnose the issue
+        if not results:
+            error_type = "API Unavailable" if not data else "No Results"
+            results.append({
+                "id": "error",
+                "title": f"{error_type} - Please try again in 1 min",
+                "poster_url": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-z77Mcl1gsl9P.png",
+                "type": "anime",
+                "source": "anilist"
+            })
+
+        if results and results[0]['id'] != "error":
             AnilistService._set_to_cache(cache_key, results)
         return results
 
@@ -146,7 +157,18 @@ class AnilistService:
                     "source": "anilist"
                 })
         
-        if results:
+        # DEBUG: If results are empty, add a placeholder to diagnose the issue
+        if not results:
+            error_type = "API Unavailable" if not data else "No Results"
+            results.append({
+                "id": "error",
+                "title": f"{error_type} - Please try again in 1 min",
+                "poster_url": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-z77Mcl1gsl9P.png",
+                "type": "anime",
+                "source": "anilist"
+            })
+
+        if results and results[0]['id'] != "error":
             AnilistService._set_to_cache(cache_key, results)
         return results
 
