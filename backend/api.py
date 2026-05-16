@@ -1855,20 +1855,24 @@ async def iframe_proxy(url: str, request: Request):
         else:
             content = base_to_inject + content
             
+        # Force-clear security headers in the final response to ensure it can be embedded anywhere
         return Response(
             content=content, 
             media_type="text/html",
             headers={
                 "Referrer-Policy": "no-referrer",
                 "X-Frame-Options": "ALLOWALL",
-                "Access-Control-Allow-Origin": "*"
+                "Content-Security-Policy": "frame-ancestors *",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*"
             }
         )
         
     except Exception as e:
         print(f"Iframe proxy failed for {url}: {e}")
-        # Fallback: if proxy fails, return a simple wrapper that might work if X-Frame-Options is not present
-        fallback_html = f'<html><body style="margin:0;padding:0;background:black;"><iframe src="{url}" style="width:100%;height:100%;border:none;" allowfullscreen sandbox="allow-scripts allow-same-origin"></iframe></body></html>'
+        # Fallback with improved sandbox permissions
+        fallback_html = f'<html><body style="margin:0;padding:0;background:black;"><iframe src="{url}" style="width:100%;height:100%;border:none;" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-storage-access-by-user-activation"></iframe></body></html>'
         return Response(content=fallback_html, media_type="text/html")
 
 
