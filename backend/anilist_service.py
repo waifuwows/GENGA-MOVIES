@@ -44,12 +44,15 @@ class AnilistService:
                 try:
                     resp = await client.post(AnilistService.API_URL, json={'query': query_str, 'variables': variables or {}})
                     if resp.status_code == 200:
-                        return resp.json().get('data', {})
+                        json_data = resp.json()
+                        if 'errors' in json_data:
+                            print(f"[AnilistService] GraphQL Errors for query: {json_data['errors']}")
+                        return json_data.get('data', {})
                     elif resp.status_code == 429:
                         print(f"[AnilistService] Rate limited (429). Attempt {attempt + 1}/{max_retries}.")
                         await asyncio.sleep(2.0 * (attempt + 1))
                     else:
-                        print(f"[AnilistService] API error {resp.status_code}: {resp.text[:200]}")
+                        print(f"[AnilistService] API error {resp.status_code}: {resp.text[:500]}")
                         if attempt == max_retries - 1: return None
                         await asyncio.sleep(1.0)
                 except Exception as e:
@@ -119,7 +122,8 @@ class AnilistService:
         if not data: return []
         
         results = []
-        for m in data.get('Page', {}).get('media', []):
+        media_list = data.get('Page', {}).get('media', [])
+        for m in media_list:
             results.append({
                 "id": str(m['id']),
                 "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
@@ -128,6 +132,17 @@ class AnilistService:
                 "source": "anilist"
             })
         
+        # DEBUG: If results are empty, add a placeholder to see if it's a rendering issue
+        if not results:
+            print("[AnilistService] DEBUG: Results were empty, adding placeholder.")
+            results.append({
+                "id": "1",
+                "title": "API Debug Item (Check Logs)",
+                "poster_url": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-z77Mcl1gsl9P.png",
+                "type": "anime",
+                "source": "anilist"
+            })
+
         AnilistService._set_to_cache(cache_key, results)
         return results
 
