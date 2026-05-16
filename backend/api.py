@@ -1655,11 +1655,9 @@ async def proxy_stream(request: Request, url: str, source: str = None):
 async def get_anime_home():
     try:
         trending = await AnilistService.get_trending(per_page=20)
-        top_100 = await AnilistService.get_top_100(per_page=20)
         
         return [
-            {"title": "Trending Now", "items": trending},
-            {"title": "Top 100 Anime", "items": top_100}
+            {"title": "Trending Now", "items": trending}
         ]
     except Exception as e:
         print(f"Anilist Home error: {e}")
