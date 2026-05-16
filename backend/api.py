@@ -599,8 +599,13 @@ async def warmup_session() -> None:
     """
     print("Warming up session...")
     try:
+        # MovieBox warmup
         search_instance = Search(session=session, query="test")
         await search_instance.get_content_model()
+        
+        # Anilist warmup - temporarily disabled to debug empty lists
+        # asyncio.create_task(AnilistService.warmup())
+        
         print("Session warmed up successfully.")
     except Exception as e:
         print(f"Warmup failed: {e}")
@@ -1649,8 +1654,8 @@ async def proxy_stream(request: Request, url: str, source: str = None):
 @router.get("/anime/home")
 async def get_anime_home():
     try:
-        trending = await AnilistService.get_trending(per_page=50)
-        top_100 = await AnilistService.get_top_100(per_page=100)
+        trending = await AnilistService.get_trending(per_page=20)
+        top_100 = await AnilistService.get_top_100(per_page=20)
         
         return [
             {"title": "Trending Now", "items": trending},
@@ -1696,22 +1701,36 @@ async def get_anime_episodes(anime_id: str):
             return {"status": 404, "data": {"episodes": []}}
         
         # Calculate how many episodes have actually released
-        count = info.get('episodes_count')
+        # Default to 0, then try to find the best estimate
+        count = 0
+        
+        ep_count = info.get('episodes_count')
         next_ep = info.get('next_episode')
         streaming_count = info.get('streaming_episodes_count', 0)
         schedule_count = info.get('aired_episodes_from_schedule', 0)
+        status = info.get('status')
         
         # Priority 1: Use airingSchedule (Historical data - most accurate for released)
-        if schedule_count > 0:
+        if schedule_count and schedule_count > 0:
             count = schedule_count
-        # Priority 2: Use streaming_episodes_count
-        elif streaming_count > 0:
-            count = streaming_count
-        # Priority 3: Use next_episode - 1 if airing
-        elif next_ep:
+        # Priority 2: Use next_episode - 1 if it's currently airing
+        elif next_ep and next_ep > 1:
             count = int(next_ep) - 1
+        # Priority 3: Use streaming_episodes_count
+        elif streaming_count and streaming_count > 0:
+            count = streaming_count
+        # Priority 4: Use episodes_count if the anime is FINISHED
+        elif status == 'FINISHED' and ep_count:
+            count = ep_count
+        # Priority 5: Fallback for NEW or ongoing anime without schedule yet
+        elif status == 'RELEASING':
+            count = 1
             
-        if not count: count = 1 # Fallback
+        # Final safety check
+        if not count or count < 1:
+            count = ep_count if (ep_count and ep_count > 0) else 1
+            
+        print(f"[Anilist Episodes] ID: {anime_id} | Status: {status} | Final Count: {count} (Sched: {schedule_count}, Stream: {streaming_count}, Next: {next_ep})")
         
         episodes = []
         for i in range(1, int(count) + 1):
@@ -1722,7 +1741,9 @@ async def get_anime_episodes(anime_id: str):
             })
         return {"status": 200, "data": {"episodes": episodes}}
     except Exception as e:
-        print(f"Anilist Episodes error: {e}")
+        print(f"[API ERROR] get_anime_episodes failed for {anime_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return {"status": 200, "data": {"episodes": []}}
 
 # Removed anime/servers as MegaPlay uses direct embed
@@ -1780,8 +1801,7 @@ async def cinecli_details(movie_id: str) -> dict:
 async def iframe_proxy(url: str, request: Request):
     """
     Proxies an iframe page (like Megaplay) to bypass Referer checks.
-    Injects <base> tag to ensure relative links (JS/CSS) work.
-    Forwards client User-Agent to ensure compatibility with devices like iPhone 7.
+    Updated to restore playback compatibility.
     """
     if not url or not url.startswith('http'):
         raise HTTPException(status_code=400, detail="Invalid URL")
@@ -1823,7 +1843,7 @@ async def iframe_proxy(url: str, request: Request):
                 'use strict';
                 console.log("[Guard] STRICT MODE ACTIVE");
                 
-                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1', 'youtube.com', 'www.youtube.com', 'googlevideo.com', 'ytimg.com', 'ggpht.com'];
+                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'anilist.co', 'youtube.com', 'google.com', 'onrender.com', 'localhost'];
                 
                 function isAllowed(u) {
                     try {
@@ -1836,13 +1856,6 @@ async def iframe_proxy(url: str, request: Request):
                 window.open = function() { console.log("[Guard] Blocked window.open"); return null; };
                 window.alert = function() { console.log("[Guard] Blocked alert"); };
                 
-                // 2. PREVENT IFRAME BREAKOUT
-                try {
-                    if (window.top !== window) {
-                        Object.defineProperty(window, 'top', { get: function() { return window; } });
-                        Object.defineProperty(window, 'parent', { get: function() { return window; } });
-                    }
-                } catch(e) {}
 
                 // 3. BLOCK REDIRECTS & CLICKS
                 function protect(e) {
@@ -1860,35 +1873,18 @@ async def iframe_proxy(url: str, request: Request):
                         }
                     }
 
-                    // Block clicks on suspicious overlays (ads)
-                    var style = window.getComputedStyle(e.target);
-                    if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
-                        console.log("[Guard] Blocked overlay click");
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                        return false;
-                    }
                 }
 
                 ['click', 'mousedown', 'mouseup', 'submit'].forEach(function(evt) {
                     document.addEventListener(evt, protect, true);
                 });
 
-                // 4. BLOCK postMessage redirects
-                window.addEventListener('message', function(e) {
-                    if (e.data && typeof e.data === 'string') {
-                        if (e.data.includes('redirect') || e.data.includes('location') || e.data.includes('http')) {
-                            e.stopImmediatePropagation();
-                        }
-                    }
-                }, true);
 
                 // 5. CLEANUP existing ads
                 function cleanup() {
-                    document.querySelectorAll('a[target="_blank"]').forEach(function(a) { a.removeAttribute('target'); });
+                    document.querySelectorAll('iframe:not([src*="megaplay"]):not([src*="youtube"])').forEach(function(f) { f.remove(); });
                 }
-                setInterval(cleanup, 1000);
+                setInterval(cleanup, 5000);
             })();
         </script>
         '''
