@@ -1842,68 +1842,28 @@ async def iframe_proxy(url: str, request: Request):
         content = resp.text
         
         # Inject <base> tag and AdBlock script
-        # ad_block_script = '''
-        # <script>
-        #     (function() {
-        #         console.log("[Guard] STRICT MODE ACTIVE");
-        #         
-        #         var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'anilist.co', 'youtube.com', 'google.com', 'onrender.com', 'localhost'];
-        #         
-        #         function isAllowed(u) {
-        #             try {
-        #                 var url = new URL(u, window.location.href);
-        #                 return ALLOWED.some(function(d) { return url.hostname.indexOf(d) !== -1; });
-        #             } catch(e) { return false; }
-        #         }
-        # 
-        #         // 1. BLOCK ALL POPUPS
-        #         window.open = function() { console.log("[Guard] Blocked window.open"); return null; };
-        #         window.alert = function() { console.log("[Guard] Blocked alert"); };
-        #         
-        # 
-        #         // 3. BLOCK REDIRECTS & CLICKS
-        #         function protect(e) {
-        #             var t = e.target;
-        #             while (t && t.tagName !== 'A' && t.tagName !== 'FORM') { t = t.parentElement; }
-        #             
-        #             if (t) {
-        #                 var url = t.href || t.action;
-        #                 if (url && !isAllowed(url)) {
-        #                     console.log("[Guard] Blocked navigation to:", url);
-        #                     e.preventDefault();
-        #                     e.stopPropagation();
-        #                     e.stopImmediatePropagation();
-        #                     return false;
-        #                 }
-        #             }
-        # 
-        #         }
-        # 
-        #         ['click', 'mousedown', 'mouseup', 'submit'].forEach(function(evt) {
-        #             document.addEventListener(evt, protect, true);
-        #         });
-        # 
-        # 
-        #         // 5. CLEANUP existing ads
-        #         function cleanup() {
-        #             document.querySelectorAll('iframe:not([src*="megaplay"]):not([src*="youtube"])').forEach(function(f) { f.remove(); });
-        #         }
-        #         setInterval(cleanup, 5000);
-        #     })();
-        # </script>
-        # '''
-        ad_block_script = ''
+        # Inject <base> tag, AdBlock script (currently disabled), and Referrer Policy
+        ad_block_script = '' # Restoring later if needed
         
-        base_to_inject = f'<base href="{url}">{ad_block_script}'
+        # Adding no-referrer to bypass 403 Forbidden on segments (Error 232403)
+        referrer_meta = '<meta name="referrer" content="no-referrer">'
+        base_to_inject = f'<base href="{url}">{referrer_meta}{ad_block_script}'
         
         if "<head>" in content.lower():
-            # Handle case insensitivity for <head>
             import re
             content = re.sub(r'(<head[^>]*>)', r'\1' + base_to_inject, content, flags=re.IGNORECASE, count=1)
         else:
             content = base_to_inject + content
             
-        return Response(content=content, media_type="text/html")
+        return Response(
+            content=content, 
+            media_type="text/html",
+            headers={
+                "Referrer-Policy": "no-referrer",
+                "X-Frame-Options": "ALLOWALL",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
         
     except Exception as e:
         print(f"Iframe proxy failed for {url}: {e}")
