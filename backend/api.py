@@ -1704,7 +1704,7 @@ async def get_anime_episodes(anime_id: str):
         # Default to 0, then try to find the best estimate
         count = 0
         
-        ep_count = info.get('episodes_count', 0) or 0
+        ep_count = info.get('episodes_count') or 0
         next_ep = info.get('next_episode')
         streaming_count = info.get('streaming_episodes_count', 0)
         schedule_count = info.get('aired_episodes_from_schedule', 0)
@@ -1715,7 +1715,7 @@ async def get_anime_episodes(anime_id: str):
         # 1. Start with the most reliable historical data
         count = max(schedule_count, streaming_count)
         
-        # 2. If it's FINISHED, use ep_count (total)
+        # 2. If it's FINISHED, use total episodes
         if status == 'FINISHED' and ep_count > 0:
             count = max(count, ep_count)
             
@@ -1724,16 +1724,21 @@ async def get_anime_episodes(anime_id: str):
             count = max(count, next_ep - 1)
             
         # 4. Final safety fallbacks
-        if count < 1:
+        if not count or count < 1:
             if status == 'FINISHED' and ep_count > 0:
                 count = ep_count
             elif status == 'RELEASING':
-                # Try to fallback to total episodes if it just started or metadata is missing
                 count = ep_count if (ep_count and ep_count > 0) else 1
             else:
-                count = 1
+                count = ep_count if (ep_count and ep_count > 0) else 1
+
+        # Final absolute floor
+        if not count or count < 1:
+            count = 1
 
         print(f"[Anilist Episodes] ID: {anime_id} | Status: {status} | Final Count: {count} (Sched: {schedule_count}, Stream: {streaming_count}, Next: {next_ep}, Total: {ep_count})")
+        if count <= 1:
+            print(f"[Anilist Episodes] LOW COUNT DEBUG - Full Info: {info}")
         
         episodes = []
         for i in range(1, int(count) + 1):
@@ -1747,7 +1752,7 @@ async def get_anime_episodes(anime_id: str):
         print(f"[API ERROR] get_anime_episodes failed for {anime_id}: {e}")
         import traceback
         traceback.print_exc()
-        return {"status": 200, "data": {"episodes": []}}
+        return {"status": 200, "data": {"episodes": [], "error": str(e)}}
 
 # Removed anime/servers as MegaPlay uses direct embed
 
