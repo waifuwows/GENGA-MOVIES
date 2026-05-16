@@ -67,6 +67,8 @@ class AnilistService:
                         await asyncio.sleep(1.0)
                 except Exception as e:
                     print(f"[AnilistService] Attempt {attempt + 1} failed: {e}")
+                    import traceback
+                    traceback.print_exc()
                     await asyncio.sleep(1.0)
         return None
 
@@ -79,7 +81,7 @@ class AnilistService:
         query = """
         query ($page: Int, $perPage: Int) {
           Page(page: $page, perPage: $perPage) {
-            media(type: ANIME, sort: TRENDING_DESC, status_not: NOT_YET_RELEASED) {
+            media(type: ANIME, sort: TRENDING_DESC) {
               id
               title { romaji english native }
               coverImage { extraLarge large }
@@ -98,7 +100,10 @@ class AnilistService:
         if data:
             media_list = data.get('Page', {}).get('media', [])
             for m in media_list:
-                # Filter out upcoming anime that haven't aired ep 1 yet
+                # Filter out upcoming anime in Python
+                if m.get('status') == 'NOT_YET_RELEASED':
+                    continue
+                
                 next_ep = (m.get('nextAiringEpisode') or {}).get('episode')
                 if m.get('status') == 'RELEASING' and next_ep == 1:
                     continue
