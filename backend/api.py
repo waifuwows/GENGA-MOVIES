@@ -1842,12 +1842,12 @@ async def iframe_proxy(url: str, request: Request):
         content = resp.text
         
         # Inject <base> tag and AdBlock script
+        # Inject AdBlock script (Safe Mode)
         ad_block_script = r'''
         <script>
             (function() {
                 'use strict';
-                console.log("[AdBlock] STRICT MODE ACTIVE");
-                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1', 'hianime.to', 'vizcloud.online', 'streamani.net', 'rabbitstream.net'];
+                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1', 'hianime.to', 'vizcloud.online', 'streamani.net', 'rabbitstream.net', 'filemoon.sx', 'vidstreaming.io'];
                 
                 function isAllowed(urlStr) {
                     try {
@@ -1856,22 +1856,11 @@ async def iframe_proxy(url: str, request: Request):
                     } catch(e) { return false; }
                 }
                 
-                // 1. BLOCK window.open
-                var _open = window.open;
                 window.open = function(url) {
-                    if (url && isAllowed(url)) return _open.apply(window, arguments);
+                    if (url && isAllowed(url)) return window.open.apply(window, arguments);
                     return null;
                 };
                 
-                // 2. BLOCK parent navigation
-                try {
-                    if (window.top !== window) {
-                        Object.defineProperty(window, 'top', { get: function() { return window; } });
-                        Object.defineProperty(window, 'parent', { get: function() { return window; } });
-                    }
-                } catch(e) {}
-                
-                // 3. BLOCK click redirects (excluding player controls)
                 document.addEventListener('click', function(e) {
                     var t = e.target;
                     while (t && t.tagName !== 'A') { t = t.parentElement; }
@@ -1880,24 +1869,12 @@ async def iframe_proxy(url: str, request: Request):
                         return false;
                     }
                 }, true);
-
-                // 4. Remove known ad elements
-                function removeAds() {
-                    var selectors = ['.ad', '.ads', '.advert', '.popup', '.overlay', '[class*="ad-"]', '[class*="popup"]', '[id*="ad-"]', '[id*="popup"]', 'iframe[src*="ads"]'];
-                    selectors.forEach(function(sel) {
-                        document.querySelectorAll(sel).forEach(function(el) {
-                            if (!el.src || !isAllowed(el.src)) { el.remove(); }
-                        });
-                    });
-                }
-                setInterval(removeAds, 2000);
             })();
         </script>
         '''
         
-        # Adding no-referrer to bypass 403 Forbidden on segments (Error 232403)
-        referrer_meta = '<meta name="referrer" content="no-referrer">'
-        base_to_inject = f'<base href="{url}">{referrer_meta}{ad_block_script}'
+        # Using strict-origin-when-cross-origin to allow scripts while masking the full URL
+        base_to_inject = f'{ad_block_script}'
         
         if "<head>" in content.lower():
             import re
@@ -1905,12 +1882,11 @@ async def iframe_proxy(url: str, request: Request):
         else:
             content = base_to_inject + content
             
-        # Force-clear security headers in the final response to ensure it can be embedded anywhere
         return Response(
             content=content, 
             media_type="text/html",
             headers={
-                "Referrer-Policy": "no-referrer",
+                "Referrer-Policy": "strict-origin-when-cross-origin",
                 "X-Frame-Options": "ALLOWALL",
                 "Content-Security-Policy": "frame-ancestors *",
                 "Access-Control-Allow-Origin": "*",
