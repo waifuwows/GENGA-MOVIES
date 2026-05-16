@@ -35,29 +35,38 @@ class AnilistService:
 
     @staticmethod
     async def _query(query_str: str, variables: Dict[str, Any] = None):
-        headers = {
-            "Content-Type": "application/json",
-        }
-        max_retries = 3
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1"
+        ]
+        
+        max_retries = 5
         for attempt in range(max_retries):
-            async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": user_agents[attempt % len(user_agents)],
+                "Accept": "application/json",
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
                 try:
                     resp = await client.post(AnilistService.API_URL, json={'query': query_str, 'variables': variables or {}})
                     if resp.status_code == 200:
                         json_data = resp.json()
                         if 'errors' in json_data:
-                            print(f"[AnilistService] GraphQL Errors for query: {json_data['errors']}")
+                            print(f"[AnilistService] GraphQL Errors: {json_data['errors']}")
                         return json_data.get('data') or {}
                     elif resp.status_code == 429:
-                        print(f"[AnilistService] Rate limited (429). Attempt {attempt + 1}/{max_retries}.")
-                        await asyncio.sleep(2.0 * (attempt + 1))
+                        wait_time = (attempt + 1) * 3.0
+                        print(f"[AnilistService] Rate limited (429). Waiting {wait_time}s...")
+                        await asyncio.sleep(wait_time)
                     else:
-                        print(f"[AnilistService] API error {resp.status_code}: {resp.text[:500]}")
-                        if attempt == max_retries - 1: return None
+                        print(f"[AnilistService] API error {resp.status_code}: {resp.text[:200]}")
                         await asyncio.sleep(1.0)
                 except Exception as e:
-                    print(f"[AnilistService] Query exception (Attempt {attempt + 1}): {e}")
-                    if attempt == max_retries - 1: return None
+                    print(f"[AnilistService] Attempt {attempt + 1} failed: {e}")
                     await asyncio.sleep(1.0)
         return None
 
