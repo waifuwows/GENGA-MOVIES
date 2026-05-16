@@ -4,6 +4,25 @@ from typing import List, Optional, Dict, Any
 
 class AnilistService:
     API_URL = "https://graphql.anilist.co"
+    _cache = {}
+    CACHE_TTL = 420  # 7 minutes in seconds
+
+    @staticmethod
+    def _get_from_cache(key: str):
+        if key in AnilistService._cache:
+            entry = AnilistService._cache[key]
+            if time.time() - entry['timestamp'] < AnilistService.CACHE_TTL:
+                return entry['data']
+            else:
+                del AnilistService._cache[key]
+        return None
+
+    @staticmethod
+    def _set_to_cache(key: str, data: Any):
+        AnilistService._cache[key] = {
+            'data': data,
+            'timestamp': time.time()
+        }
 
     @staticmethod
     async def _query(query_str: str, variables: Dict[str, Any] = None):
@@ -20,6 +39,10 @@ class AnilistService:
 
     @staticmethod
     async def get_trending(page: int = 1, per_page: int = 50) -> List[dict]:
+        cache_key = f"trending_{page}_{per_page}"
+        cached_data = AnilistService._get_from_cache(cache_key)
+        if cached_data: return cached_data
+
         query = """
         query ($page: Int, $perPage: Int) {
           Page(page: $page, perPage: $perPage) {
@@ -49,10 +72,16 @@ class AnilistService:
                 "type": "anime",
                 "source": "anilist"
             })
+        
+        AnilistService._set_to_cache(cache_key, results)
         return results
 
     @staticmethod
     async def get_top_100(page: int = 1, per_page: int = 100) -> List[dict]:
+        cache_key = f"top100_{page}_{per_page}"
+        cached_data = AnilistService._get_from_cache(cache_key)
+        if cached_data: return cached_data
+
         query = """
         query ($page: Int, $perPage: Int) {
           Page(page: $page, perPage: $perPage) {
@@ -77,10 +106,18 @@ class AnilistService:
                 "type": "anime",
                 "source": "anilist"
             })
+        
+        AnilistService._set_to_cache(cache_key, results)
         return results
 
     @staticmethod
     async def search(query_str: str, page: int = 1, per_page: int = 20) -> List[dict]:
+        # Search results are typically not cached or cached for shorter duration
+        # But we can cache for 7 mins as requested if the query is the same
+        cache_key = f"search_{query_str}_{page}_{per_page}"
+        cached_data = AnilistService._get_from_cache(cache_key)
+        if cached_data: return cached_data
+
         search_query = """
         query ($page: Int, $perPage: Int, $search: String) {
           Page(page: $page, perPage: $perPage) {
@@ -105,10 +142,16 @@ class AnilistService:
                 "type": "anime",
                 "source": "anilist"
             })
+        
+        AnilistService._set_to_cache(cache_key, results)
         return results
 
     @staticmethod
     async def get_info(anime_id: str) -> Optional[dict]:
+        cache_key = f"info_{anime_id}"
+        cached_data = AnilistService._get_from_cache(cache_key)
+        if cached_data: return cached_data
+
         query = """
         query ($id: Int) {
           Media(id: $id, type: ANIME) {
@@ -146,7 +189,7 @@ class AnilistService:
             if not data: return None
             
             m = data.get('Media', {})
-            return {
+            result = {
                 "id": str(m['id']),
                 "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
                 "plot": m['description'],
@@ -164,6 +207,8 @@ class AnilistService:
                 "source": "anilist",
                 "hasFullDetails": True
             }
+            AnilistService._set_to_cache(cache_key, result)
+            return result
         except Exception as e:
             print(f"[AnilistService] get_info error: {e}")
             return None

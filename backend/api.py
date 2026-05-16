@@ -1727,202 +1727,11 @@ async def get_anime_episodes(anime_id: str):
 
 # Removed anime/servers as MegaPlay uses direct embed
 
-@router.get("/iframe-proxy")
-async def iframe_proxy(url: str):
-    """
-    Serves a minimal HTML page containing the target iframe.
-    Includes AGGRESSIVE ad-blocking to prevent ALL redirects.
-    """
-    html_content = f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Video Player</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        html, body {{ margin: 0; padding: 0; width: 100%; height: 100%; background: black; overflow: hidden; }}
-        .iframe-container {{ width: 100%; height: 100%; position: relative; }}
-        iframe {{ width: 100%; height: 100%; border: none; }}
-        /* Hide any ad overlays */
-        .ad, .ads, .advert, .advertisement, .popup, .overlay, [class*="ad-"], [class*="popup"], 
-        [id*="ad-"], [id*="popup"], [class*="sponsor"], [class*="banner"] {{ display: none !important; }}
-    </style>
-    <script>
-        // AGGRESSIVE AD-BLOCKER v2.0
-        (function() {{
-            'use strict';
-            console.log("[AdBlock] STRICT MODE ACTIVE");
-            
-            var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1'];
-            
-            function isAllowed(urlStr) {{
-                try {{
-                    var u = new URL(urlStr, window.location.href);
-                    return ALLOWED.some(function(d) {{ return u.hostname.indexOf(d) !== -1; }});
-                }} catch(e) {{ return false; }}
-            }}
-            
-            // 1. BLOCK window.open
-            var _open = window.open;
-            window.open = function(url) {{
-                if (url && isAllowed(url)) return _open.apply(window, arguments);
-                console.log("[AdBlock] Blocked window.open:", url);
-                return null;
-            }};
-            
-            // 2. BLOCK location changes
-            // 2. BLOCK location changes (Safe method)
-            // Cannot redefine window.location directly in modern browsers
-            window.addEventListener('beforeunload', function(e) {{
-                // heuristic: if we didn't initiate a click on an allowed link, it might be a redirect
-                // But this is hard to detect perfectly. 
-                // For now, relies on click hijacking (below) to stop new tabs.
-            }});
-            
-            // 3. BLOCK top/parent navigation
-            try {{
-                if (window.top !== window) {{
-                    Object.defineProperty(window, 'top', {{ get: function() {{ return window; }} }});
-                    Object.defineProperty(window, 'parent', {{ get: function() {{ return window; }} }});
-                }}
-            }} catch(e) {{}}
-            
-            // 4. BLOCK ALL click events on suspicious elements
-            document.addEventListener('click', function(e) {{
-                var t = e.target;
-                
-                // Block clicks on invisible overlays (ad trick)
-                var style = window.getComputedStyle(t);
-                if (style.opacity === '0' || style.visibility === 'hidden' || 
-                    (style.position === 'fixed' && parseInt(style.zIndex) > 1000)) {{
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    console.log("[AdBlock] Blocked invisible overlay click");
-                    return false;
-                }}
-                
-                // Block external links
-                while (t && t.tagName !== 'A') {{ t = t.parentElement; }}
-                if (t && t.href && !isAllowed(t.href)) {{
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    console.log("[AdBlock] Blocked link:", t.href);
-                    return false;
-                }}
-            }}, true);
-            
-            // 5. BLOCK mousedown/mouseup (some ads use these)
-            ['mousedown', 'mouseup', 'pointerdown', 'pointerup'].forEach(function(evt) {{
-                document.addEventListener(evt, function(e) {{
-                    var t = e.target;
-                    while (t && t.tagName !== 'A') {{ t = t.parentElement; }}
-                    if (t && t.href && !isAllowed(t.href)) {{
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                        return false;
-                    }}
-                }}, true);
-            }});
-            
-            // 6. BLOCK form submissions to external sites
-            document.addEventListener('submit', function(e) {{
-                var form = e.target;
-                if (form.action && !isAllowed(form.action)) {{
-                    e.preventDefault();
-                    console.log("[AdBlock] Blocked form submit:", form.action);
-                    return false;
-                }}
-            }}, true);
-            
-            // 7. INTERCEPT and BLOCK setTimeout/setInterval redirects
-            var _setTimeout = window.setTimeout;
-            var _setInterval = window.setInterval;
-            window.setTimeout = function(fn, delay) {{
-                if (typeof fn === 'string' && (fn.includes('location') || fn.includes('open') || fn.includes('href'))) {{
-                    console.log("[AdBlock] Blocked setTimeout redirect");
-                    return 0;
-                }}
-                return _setTimeout.apply(window, arguments);
-            }};
-            window.setInterval = function(fn, delay) {{
-                if (typeof fn === 'string' && (fn.includes('location') || fn.includes('open') || fn.includes('href'))) {{
-                    console.log("[AdBlock] Blocked setInterval redirect");
-                    return 0;
-                }}
-                return _setInterval.apply(window, arguments);
-            }};
-            
-            // 8. BLOCK beforeunload (prevents "are you sure" popups)
-            window.onbeforeunload = null;
-            window.addEventListener('beforeunload', function(e) {{
-                delete e.returnValue;
-            }});
 
-            // 9. ANTI-DEBUGGER PROTECTION (Prevents UI freezing)
-            var originalFunction = window.Function;
-            window.Function = function(str) {{
-                if (str && str.indexOf('debugger') !== -1) {{
-                    console.log("[AdBlock] Stripping debugger...");
-                    str = str.replace(/debugger/g, ' ');
-                }}
-                return originalFunction(str);
-            }};
-            var originalEval = window.eval;
-            window.eval = function(str) {{
-                if (str && typeof str === 'string' && str.indexOf('debugger') !== -1) {{
-                    console.log("[AdBlock] Stripped debugger from eval");
-                    str = str.replace(/debugger/g, ' ');
-                }}
-                return originalEval(str);
-            }};
-            
-            // 9. Remove ad elements on load
-            function removeAds() {{
-                var selectors = ['.ad', '.ads', '.advert', '.popup', '.overlay', '[class*="ad-"]', 
-                                 '[class*="popup"]', '[id*="ad-"]', '[id*="popup"]', 'iframe[src*="ads"]'];
-                selectors.forEach(function(sel) {{
-                    document.querySelectorAll(sel).forEach(function(el) {{
-                        if (!el.src || !isAllowed(el.src)) {{
-                            el.remove();
-                        }}
-                    }});
-                }});
-            }}
-            document.addEventListener('DOMContentLoaded', removeAds);
-            setInterval(removeAds, 2000);
-            
-            // 10. BLOCK postMessage redirects
-            window.addEventListener('message', function(e) {{
-                if (e.data && typeof e.data === 'string') {{
-                    if (e.data.includes('redirect') || e.data.includes('location') || e.data.includes('http')) {{
-                        console.log("[AdBlock] Blocked postMessage:", e.data.substring(0, 100));
-                        e.stopImmediatePropagation();
-                    }}
-                }}
-            }}, true);
-            
-            console.log("[AdBlock] All protections loaded successfully");
-        }})();
-    </script>
-</head>
-<body>
-    <div class="iframe-container">
-        <iframe 
-            src="{url}"
-            frameborder="0"
-            scrolling="no"
-            allowfullscreen
-            allow="autoplay; encrypted-media; fullscreen"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation">
-        </iframe>
-    </div>
-</body>
-</html>'''
+
+
     
-    return Response(content=html_content, media_type="text/html")
+
 
 @router.get("/anime/sources")
 async def get_anime_sources(episode_id: str, anime_id: str = None, category: str = "sub"):
@@ -1972,14 +1781,23 @@ async def iframe_proxy(url: str, request: Request):
     """
     Proxies an iframe page (like Megaplay) to bypass Referer checks.
     Injects <base> tag to ensure relative links (JS/CSS) work.
+    Forwards client User-Agent to ensure compatibility with devices like iPhone 7.
     """
+    if not url or not url.startswith('http'):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+        
     client = get_http_client()
     
-    # Get proper headers (referer spoofing)
+    # Forward the client's User-Agent to the destination
+    # This is critical for MegaPlay to return the correct version for the device
+    client_ua = request.headers.get('user-agent', DEFAULT_HEADERS['User-Agent'])
+    
     headers = {
-        'User-Agent': DEFAULT_HEADERS['User-Agent'],
-        'Referer': 'https://hianime.to/',
-        'Origin': 'https://hianime.to'
+        'User-Agent': client_ua,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Referer': 'https://megaplay.buzz/',
+        'Origin': 'https://megaplay.buzz'
     }
     
     # Specific handling for known providers
@@ -1988,25 +1806,109 @@ async def iframe_proxy(url: str, request: Request):
         headers['Origin'] = 'https://megaplay.buzz'
         
     try:
-        resp = await client.get(url, headers=headers, follow_redirects=True)
+        print(f"[IframeProxy] Requesting: {url} (UA: {client_ua[:50]}...)")
+        resp = await client.get(url, headers=headers, follow_redirects=True, timeout=15.0)
+        
+        if resp.status_code == 404:
+            print(f"[IframeProxy] 404 Error for URL: {url}")
+            return Response(content="Source returned 404. The content might be unavailable or restricted.", status_code=404)
+            
         content = resp.text
         
-        # Inject <base> tag right after <head>
-        base_to_inject = f'<base href="{url}">'
-        if "<head>" in content:
-            content = content.replace("<head>", f"<head>{base_to_inject}", 1)
-        # Fallback for upper case
-        elif "<HEAD>" in content:
-            content = content.replace("<HEAD>", f"<HEAD>{base_to_inject}", 1)
+        # Inject <base> tag and AdBlock script
+        ad_block_script = '''
+        <script>
+            // ULTRA-AGGRESSIVE AD-BLOCKER & REDIRECT PREVENTER
+            (function() {
+                'use strict';
+                console.log("[Guard] STRICT MODE ACTIVE");
+                
+                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1', 'youtube.com', 'www.youtube.com', 'googlevideo.com', 'ytimg.com', 'ggpht.com'];
+                
+                function isAllowed(u) {
+                    try {
+                        var url = new URL(u, window.location.href);
+                        return ALLOWED.some(function(d) { return url.hostname.indexOf(d) !== -1; });
+                    } catch(e) { return false; }
+                }
+
+                // 1. BLOCK ALL POPUPS
+                window.open = function() { console.log("[Guard] Blocked window.open"); return null; };
+                window.alert = function() { console.log("[Guard] Blocked alert"); };
+                
+                // 2. PREVENT IFRAME BREAKOUT
+                try {
+                    if (window.top !== window) {
+                        Object.defineProperty(window, 'top', { get: function() { return window; } });
+                        Object.defineProperty(window, 'parent', { get: function() { return window; } });
+                    }
+                } catch(e) {}
+
+                // 3. BLOCK REDIRECTS & CLICKS
+                function protect(e) {
+                    var t = e.target;
+                    while (t && t.tagName !== 'A' && t.tagName !== 'FORM') { t = t.parentElement; }
+                    
+                    if (t) {
+                        var url = t.href || t.action;
+                        if (url && !isAllowed(url)) {
+                            console.log("[Guard] Blocked navigation to:", url);
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
+                            return false;
+                        }
+                    }
+
+                    // Block clicks on suspicious overlays (ads)
+                    var style = window.getComputedStyle(e.target);
+                    if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
+                        console.log("[Guard] Blocked overlay click");
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return false;
+                    }
+                }
+
+                ['click', 'mousedown', 'mouseup', 'submit'].forEach(function(evt) {
+                    document.addEventListener(evt, protect, true);
+                });
+
+                // 4. BLOCK postMessage redirects
+                window.addEventListener('message', function(e) {
+                    if (e.data && typeof e.data === 'string') {
+                        if (e.data.includes('redirect') || e.data.includes('location') || e.data.includes('http')) {
+                            e.stopImmediatePropagation();
+                        }
+                    }
+                }, true);
+
+                // 5. CLEANUP existing ads
+                function cleanup() {
+                    document.querySelectorAll('a[target="_blank"]').forEach(function(a) { a.removeAttribute('target'); });
+                }
+                setInterval(cleanup, 1000);
+            })();
+        </script>
+        '''
+        
+        base_to_inject = f'<base href="{url}">{ad_block_script}'
+        
+        if "<head>" in content.lower():
+            # Handle case insensitivity for <head>
+            import re
+            content = re.sub(r'(<head[^>]*>)', r'\1' + base_to_inject, content, flags=re.IGNORECASE, count=1)
         else:
-            # If no head, just prepend (browsers are lenient)
             content = base_to_inject + content
             
         return Response(content=content, media_type="text/html")
         
     except Exception as e:
-        print(f"Iframe proxy failed: {e}")
-        return Response(content=f"Proxy Error: {e}", status_code=500)
+        print(f"Iframe proxy failed for {url}: {e}")
+        # Fallback: if proxy fails, return a simple wrapper that might work if X-Frame-Options is not present
+        fallback_html = f'<html><body style="margin:0;padding:0;background:black;"><iframe src="{url}" style="width:100%;height:100%;border:none;" allowfullscreen sandbox="allow-scripts allow-same-origin"></iframe></body></html>'
+        return Response(content=fallback_html, media_type="text/html")
 
 
 @router.get("/proxy-stream")

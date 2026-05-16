@@ -15,94 +15,6 @@ import RadioDiscovery from './components/RadioDiscovery';
 import RadioPlayer from './components/RadioPlayer';
 import './styles/index.css';
 
-// Auto-detect local server IP
-const detectLocalServer = async (onProgress) => {
-    // Check relative path first (for Cloudflare Tunnels / Proxy)
-    try {
-        const res = await fetch('/api/health');
-        if (res.ok) {
-            console.log('Found backend on relative path');
-            return ''; // Empty string for relative path
-        }
-    } catch (e) {
-        // Ignore
-    }
-
-    // Check specific IP and port
-    const checkIP = async (ip, port = 8000) => {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 500); // 500ms timeout
-
-            // If checking localhost/IP, use http.
-            // If checking a domain (tunnel), we might need https, but here we scan local network so http is fine usually.
-            // But if 'ip' is actually a hostname, act smart.
-            let protocol = 'http';
-            if (window.location.protocol === 'https:' && ip !== 'localhost' && !ip.match(/^\d+\./)) {
-                protocol = 'https';
-            }
-
-            const response = await fetch(`${protocol}://${ip}:${port}/api/health`, {
-                method: 'GET',
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            if (response.ok) {
-                return `http://${ip}:${port}`;
-            }
-        } catch (e) {
-            // Ignore errors
-        }
-        return null;
-    };
-
-    // 1. First check the current hostname on common ports (8000, 8080)
-    const hostname = window.location.hostname; // Define hostname here
-    if (onProgress) onProgress(`Checking ${hostname}...`);
-    const port8000 = await checkIP(hostname, 8000);
-    if (port8000) return port8000;
-
-    const port8080 = await checkIP(hostname, 8080);
-    if (port8080) return port8080;
-
-    // 2. Scan local network subnets (only check port 8000/8080 for discovery)
-    // We prioritize 8000 for scanning to be fast
-    const subnets = [
-        '192.168.0',
-        '192.168.1',
-        '192.168.31',
-        '192.168.100',
-        '10.0.0'
-    ];
-
-    for (const subnet of subnets) {
-        if (onProgress) onProgress(`Scanning ${subnet}.x...`);
-
-        // Scan 255 IPs in chunks of 20
-        const ips = Array.from({ length: 255 }, (_, i) => `${subnet}.${i + 1}`);
-        const chunkSize = 20;
-
-        for (let i = 0; i < ips.length; i += chunkSize) {
-            const chunk = ips.slice(i, i + chunkSize);
-            // Check port 8000 first, then 8080
-            const promises = chunk.flatMap(ip => [checkIP(ip, 8000), checkIP(ip, 8080)]);
-            const results = await Promise.all(promises);
-            const found = results.find(url => url);
-            if (found) {
-                // Silent found
-                return found;
-            }
-        }
-    }
-
-    // Fallback to localhost:8000 if nothing else found
-    // Or try localhost:8080 last resort
-    const local8080 = await checkIP('localhost', 8080);
-    if (local8080) return local8080;
-
-    return 'http://localhost:8080';
-};
-
 // Define available backends
 const CLOUD_BASE = 'https://genga-movies.onrender.com';
 const NEWS_API_BASE = 'https://api-consumet-org-x46x.onrender.com';
@@ -119,10 +31,9 @@ function App() {
 
     const [localServerURL, setLocalServerURL] = useState(() => {
         const saved = localStorage.getItem('moviebox_local_ip');
-        return saved !== null ? saved : 'http://localhost:8080';
+        return saved !== null ? saved : 'http://localhost:8000';
     });
 
-    const [scanningStatus, setScanningStatus] = useState('');
     const [showManualIP, setShowManualIP] = useState(false);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [historyFilter, setHistoryFilter] = useState('all');
@@ -151,28 +62,19 @@ function App() {
 
     }, [activeSource]);
 
-    // Auto-detect local server on mount
+    // Simplified connection logic
     useEffect(() => {
-        // Only scan if we don't have a saved IP or if explicitly requested
         const savedIP = localStorage.getItem('moviebox_local_ip');
-        // Force rescan if no IP, or if IP is using old stale ports (8000, 8001, 5500)
-        const isStale = savedIP && (savedIP.includes(':8001') || savedIP.includes(':5500'));
-
-        if (!savedIP || isStale) {
-            setScanningStatus('Scanning network...');
-            detectLocalServer((status) => setScanningStatus(status)).then(url => {
-                setLocalServerURL(url);
-                setScanningStatus('');
-                localStorage.setItem('moviebox_local_ip', url);
-            });
-        } else {
-
+        if (!savedIP) {
+            localStorage.setItem('moviebox_local_ip', 'http://localhost:8000');
         }
     }, []);
 
+
     // Helper to determine target base URL for a given source
     const getTargetBase = (src = activeSource) => {
-        return (src === 'home' || src === 'anilist' || src === 'manga' || src === 'music' || src === 'news' || src === 'tv' || src === 'radio')
+        if (src === 'home') return 'http://localhost:8000';
+        return (src === 'anilist' || src === 'manga' || src === 'music' || src === 'news' || src === 'tv' || src === 'radio')
             ? CLOUD_BASE
             : localServerURL;
     };
@@ -941,11 +843,6 @@ function App() {
                     width: '100%',
                     zIndex: 10
                 }}>
-                    {scanningStatus && (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', animation: 'pulse 1.5s infinite', background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
-                            {scanningStatus}
-                        </span>
-                    )}
 
 
                     {(activeSource === 'moviebox' || activeSource === 'home') && (
@@ -1393,11 +1290,11 @@ function App() {
                                                 return null;
                                             };
 
-                                            const port8080 = await check(8080);
-                                            if (port8080) return port8080;
-
                                             const port8000 = await check(8000);
                                             if (port8000) return port8000;
+
+                                            const port8080 = await check(8080);
+                                            if (port8080) return port8080;
 
                                             return null;
                                         };
@@ -1434,7 +1331,7 @@ function App() {
                                         } else {
                                             // For standard IPs, use the fallback scanner
                                             findBackendPort(url).then(foundUrl => {
-                                                setFoundUrl(foundUrl || (url.includes(':') && (url.match(/:/g) || []).length >= 2 ? url : url + ':8080'));
+                                                setFoundUrl(foundUrl || (url.includes(':') && (url.match(/:/g) || []).length >= 2 ? url : url + ':8000'));
                                             });
                                         }
                                     }
