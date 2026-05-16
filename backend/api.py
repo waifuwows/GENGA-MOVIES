@@ -1842,58 +1842,57 @@ async def iframe_proxy(url: str, request: Request):
         content = resp.text
         
         # Inject <base> tag and AdBlock script
-        ad_block_script = '''
-        <script>
-            // ULTRA-AGGRESSIVE AD-BLOCKER & REDIRECT PREVENTER
-            (function() {
-                'use strict';
-                console.log("[Guard] STRICT MODE ACTIVE");
-                
-                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'anilist.co', 'youtube.com', 'google.com', 'onrender.com', 'localhost'];
-                
-                function isAllowed(u) {
-                    try {
-                        var url = new URL(u, window.location.href);
-                        return ALLOWED.some(function(d) { return url.hostname.indexOf(d) !== -1; });
-                    } catch(e) { return false; }
-                }
-
-                // 1. BLOCK ALL POPUPS
-                window.open = function() { console.log("[Guard] Blocked window.open"); return null; };
-                window.alert = function() { console.log("[Guard] Blocked alert"); };
-                
-
-                // 3. BLOCK REDIRECTS & CLICKS
-                function protect(e) {
-                    var t = e.target;
-                    while (t && t.tagName !== 'A' && t.tagName !== 'FORM') { t = t.parentElement; }
-                    
-                    if (t) {
-                        var url = t.href || t.action;
-                        if (url && !isAllowed(url)) {
-                            console.log("[Guard] Blocked navigation to:", url);
-                            e.preventDefault();
-                            e.stopPropagation();
-                            e.stopImmediatePropagation();
-                            return false;
-                        }
-                    }
-
-                }
-
-                ['click', 'mousedown', 'mouseup', 'submit'].forEach(function(evt) {
-                    document.addEventListener(evt, protect, true);
-                });
-
-
-                // 5. CLEANUP existing ads
-                function cleanup() {
-                    document.querySelectorAll('iframe:not([src*="megaplay"]):not([src*="youtube"])').forEach(function(f) { f.remove(); });
-                }
-                setInterval(cleanup, 5000);
-            })();
-        </script>
-        '''
+        # ad_block_script = '''
+        # <script>
+        #     (function() {
+        #         console.log("[Guard] STRICT MODE ACTIVE");
+        #         
+        #         var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'anilist.co', 'youtube.com', 'google.com', 'onrender.com', 'localhost'];
+        #         
+        #         function isAllowed(u) {
+        #             try {
+        #                 var url = new URL(u, window.location.href);
+        #                 return ALLOWED.some(function(d) { return url.hostname.indexOf(d) !== -1; });
+        #             } catch(e) { return false; }
+        #         }
+        # 
+        #         // 1. BLOCK ALL POPUPS
+        #         window.open = function() { console.log("[Guard] Blocked window.open"); return null; };
+        #         window.alert = function() { console.log("[Guard] Blocked alert"); };
+        #         
+        # 
+        #         // 3. BLOCK REDIRECTS & CLICKS
+        #         function protect(e) {
+        #             var t = e.target;
+        #             while (t && t.tagName !== 'A' && t.tagName !== 'FORM') { t = t.parentElement; }
+        #             
+        #             if (t) {
+        #                 var url = t.href || t.action;
+        #                 if (url && !isAllowed(url)) {
+        #                     console.log("[Guard] Blocked navigation to:", url);
+        #                     e.preventDefault();
+        #                     e.stopPropagation();
+        #                     e.stopImmediatePropagation();
+        #                     return false;
+        #                 }
+        #             }
+        # 
+        #         }
+        # 
+        #         ['click', 'mousedown', 'mouseup', 'submit'].forEach(function(evt) {
+        #             document.addEventListener(evt, protect, true);
+        #         });
+        # 
+        # 
+        #         // 5. CLEANUP existing ads
+        #         function cleanup() {
+        #             document.querySelectorAll('iframe:not([src*="megaplay"]):not([src*="youtube"])').forEach(function(f) { f.remove(); });
+        #         }
+        #         setInterval(cleanup, 5000);
+        #     })();
+        # </script>
+        # '''
+        ad_block_script = ''
         
         base_to_inject = f'<base href="{url}">{ad_block_script}'
         
