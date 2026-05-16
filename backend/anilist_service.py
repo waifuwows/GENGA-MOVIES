@@ -119,31 +119,33 @@ class AnilistService:
         }
         """
         data = await AnilistService._query(query, {"page": page, "perPage": per_page})
-        if not data: return []
         
         results = []
-        media_list = data.get('Page', {}).get('media', [])
-        for m in media_list:
-            results.append({
-                "id": str(m['id']),
-                "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
-                "poster_url": m['coverImage']['extraLarge'] or m['coverImage']['large'],
-                "type": "anime",
-                "source": "anilist"
-            })
+        if data:
+            media_list = data.get('Page', {}).get('media', [])
+            for m in media_list:
+                results.append({
+                    "id": str(m['id']),
+                    "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
+                    "poster_url": m['coverImage']['extraLarge'] or m['coverImage']['large'],
+                    "type": "anime",
+                    "source": "anilist"
+                })
         
-        # DEBUG: If results are empty, add a placeholder to see if it's a rendering issue
+        # DEBUG: If results are empty, add a placeholder to diagnose the issue
         if not results:
-            print("[AnilistService] DEBUG: Results were empty, adding placeholder.")
+            error_type = "Connection Failed" if not data else "No Results from API"
+            print(f"[AnilistService] DEBUG: {error_type}, adding placeholder.")
             results.append({
-                "id": "1",
-                "title": "API Debug Item (Check Logs)",
+                "id": "debug_error",
+                "title": f"DEBUG: {error_type}",
                 "poster_url": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-z77Mcl1gsl9P.png",
                 "type": "anime",
                 "source": "anilist"
             })
 
-        AnilistService._set_to_cache(cache_key, results)
+        if results and results[0]['id'] != "debug_error":
+            AnilistService._set_to_cache(cache_key, results)
         return results
 
     @staticmethod
