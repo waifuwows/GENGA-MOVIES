@@ -1842,8 +1842,58 @@ async def iframe_proxy(url: str, request: Request):
         content = resp.text
         
         # Inject <base> tag and AdBlock script
-        # Inject <base> tag, AdBlock script (currently disabled), and Referrer Policy
-        ad_block_script = '' # Restoring later if needed
+        ad_block_script = r'''
+        <script>
+            (function() {
+                'use strict';
+                console.log("[AdBlock] STRICT MODE ACTIVE");
+                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1', 'hianime.to', 'vizcloud.online', 'streamani.net', 'rabbitstream.net'];
+                
+                function isAllowed(urlStr) {
+                    try {
+                        var u = new URL(urlStr, window.location.href);
+                        return ALLOWED.some(function(d) { return u.hostname.indexOf(d) !== -1; });
+                    } catch(e) { return false; }
+                }
+                
+                // 1. BLOCK window.open
+                var _open = window.open;
+                window.open = function(url) {
+                    if (url && isAllowed(url)) return _open.apply(window, arguments);
+                    return null;
+                };
+                
+                // 2. BLOCK parent navigation
+                try {
+                    if (window.top !== window) {
+                        Object.defineProperty(window, 'top', { get: function() { return window; } });
+                        Object.defineProperty(window, 'parent', { get: function() { return window; } });
+                    }
+                } catch(e) {}
+                
+                // 3. BLOCK click redirects (excluding player controls)
+                document.addEventListener('click', function(e) {
+                    var t = e.target;
+                    while (t && t.tagName !== 'A') { t = t.parentElement; }
+                    if (t && t.href && !isAllowed(t.href)) {
+                        e.preventDefault(); e.stopPropagation();
+                        return false;
+                    }
+                }, true);
+
+                // 4. Remove known ad elements
+                function removeAds() {
+                    var selectors = ['.ad', '.ads', '.advert', '.popup', '.overlay', '[class*="ad-"]', '[class*="popup"]', '[id*="ad-"]', '[id*="popup"]', 'iframe[src*="ads"]'];
+                    selectors.forEach(function(sel) {
+                        document.querySelectorAll(sel).forEach(function(el) {
+                            if (!el.src || !isAllowed(el.src)) { el.remove(); }
+                        });
+                    });
+                }
+                setInterval(removeAds, 2000);
+            })();
+        </script>
+        '''
         
         # Adding no-referrer to bypass 403 Forbidden on segments (Error 232403)
         referrer_meta = '<meta name="referrer" content="no-referrer">'
