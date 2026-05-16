@@ -1804,104 +1804,68 @@ async def cinecli_details(movie_id: str) -> dict:
 
 
 @router.get("/iframe-proxy")
-async def iframe_proxy(url: str, request: Request):
+async def iframe_proxy(url: str):
     """
-    Proxies an iframe page (like Megaplay) to bypass Referer checks.
-    Updated to restore playback compatibility.
+    Returns a clean HTML wrapper for the video player.
+    Preserves original scripts and provides ad-blocking + event monitoring.
     """
-    if not url or not url.startswith('http'):
-        raise HTTPException(status_code=400, detail="Invalid URL")
-        
-    client = get_http_client()
-    
-    # Forward the client's User-Agent to the destination
-    # This is critical for MegaPlay to return the correct version for the device
-    client_ua = request.headers.get('user-agent', DEFAULT_HEADERS['User-Agent'])
-    
-    headers = {
-        'User-Agent': client_ua,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Referer': 'https://megaplay.buzz/',
-        'Origin': 'https://megaplay.buzz'
-    }
-    
-    # Specific handling for known providers
-    if "megaplay.buzz" in url:
-        headers['Referer'] = 'https://megaplay.buzz/'
-        headers['Origin'] = 'https://megaplay.buzz'
-        
-    try:
-        print(f"[IframeProxy] Requesting: {url} (UA: {client_ua[:50]}...)")
-        resp = await client.get(url, headers=headers, follow_redirects=True, timeout=15.0)
-        
-        if resp.status_code == 404:
-            print(f"[IframeProxy] 404 Error for URL: {url}")
-            return Response(content="Source returned 404. The content might be unavailable or restricted.", status_code=404)
-            
-        content = resp.text
-        
-        # Inject <base> tag and AdBlock script
-        # Inject AdBlock script (Safe Mode)
-        ad_block_script = r'''
-        <script>
-            (function() {
-                'use strict';
-                var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1', 'hianime.to', 'vizcloud.online', 'streamani.net', 'rabbitstream.net', 'filemoon.sx', 'vidstreaming.io'];
-                
-                function isAllowed(urlStr) {
-                    try {
-                        var u = new URL(urlStr, window.location.href);
-                        return ALLOWED.some(function(d) { return u.hostname.indexOf(d) !== -1; });
-                    } catch(e) { return false; }
-                }
-                
-                window.open = function(url) {
-                    if (url && isAllowed(url)) return window.open.apply(window, arguments);
-                    return null;
-                };
-                
-                document.addEventListener('click', function(e) {
-                    var t = e.target;
-                    while (t && t.tagName !== 'A') { t = t.parentElement; }
-                    if (t && t.href && !isAllowed(t.href)) {
-                        e.preventDefault(); e.stopPropagation();
-                        return false;
-                    }
-                }, true);
-            })();
-        </script>
-        '''
-        
-        # Using strict-origin-when-cross-origin to allow scripts while masking the full URL
-        base_to_inject = f'{ad_block_script}'
-        
-        if "<head>" in content.lower():
-            import re
-            content = re.sub(r'(<head[^>]*>)', r'\1' + base_to_inject, content, flags=re.IGNORECASE, count=1)
-        else:
-            content = base_to_inject + content
-            
-        return Response(
-            content=content, 
-            media_type="text/html",
-            headers={
-                "Referrer-Policy": "strict-origin-when-cross-origin",
-                "X-Frame-Options": "ALLOWALL",
-                "Content-Security-Policy": "frame-ancestors *",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "*"
-            }
-        )
-        
-    except Exception as e:
-        print(f"Iframe proxy failed for {url}: {e}")
-        # Fallback with improved sandbox permissions
-        fallback_html = f'<html><body style="margin:0;padding:0;background:black;"><iframe src="{url}" style="width:100%;height:100%;border:none;" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-storage-access-by-user-activation"></iframe></body></html>'
-        return Response(content=fallback_html, media_type="text/html")
+    html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anime Player</title>
+<style>
+  html, body {{ margin:0; height:100%; background:#000; overflow:hidden; }}
+  #player {{ position:fixed; inset:0; width:100%; height:100%; border:0; }}
+</style>
+</head>
+<body>
+<iframe
+  id="player"
+  src="{url}"
+  allow="autoplay; fullscreen; picture-in-picture"
+  allowfullscreen
+  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-storage-access-by-user-activation">
+</iframe>
 
+<script>
+// 1. AD-BLOCKER (Safe Mode) - Prevents basic redirects
+(function() {{
+    var ALLOWED = ['megaplay.buzz', 'megacloud.tv', 'megacloud.blog', 'anilist.co', 'localhost', '127.0.0.1'];
+    function isAllowed(uStr) {{ try {{ var u = new URL(uStr, window.location.href); return ALLOWED.some(d => u.hostname.includes(d)); }} catch(e) {{ return false; }} }}
+    
+    var _open = window.open;
+    window.open = function(u) {{ if (u && isAllowed(u)) return _open.apply(window, arguments); return null; }};
+    
+    document.addEventListener('click', function(e) {{
+        var t = e.target; while (t && t.tagName !== 'A') t = t.parentElement;
+        if (t && t.href && !isAllowed(t.href)) {{ e.preventDefault(); e.stopPropagation(); return false; }}
+    }}, true);
+}})();
 
+// 2. EVENT LISTENER - Monitor player state
+window.addEventListener("message", function (event) {{
+  if (event.origin !== "https://megaplay.buzz") return;
+  let data = event.data;
+  if (typeof data === "string") {{ try {{ data = JSON.parse(data); }} catch {{ return; }} }}
+  if (data.event === "complete") {{ console.log("[MegaPlay] Episode finished"); }}
+  if (data.event === "error") {{ console.log("[MegaPlay] Playback error"); }}
+}});
+</script>
+</body>
+</html>'''
+    
+    return Response(
+        content=html_content, 
+        media_type="text/html",
+        headers={
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "X-Frame-Options": "ALLOWALL",
+            "Content-Security-Policy": "frame-ancestors *"
+        }
+    )
+    
 @router.get("/proxy-stream")
 async def proxy_stream(request: Request, url: str, source: str = None):
     """
