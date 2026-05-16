@@ -70,34 +70,43 @@ class AnilistService:
         query = """
         query ($page: Int, $perPage: Int) {
           Page(page: $page, perPage: $perPage) {
-            media(type: ANIME, sort: TRENDING_DESC) {
+            media(type: ANIME, sort: TRENDING_DESC, status_not: NOT_YET_RELEASED) {
               id
               title { romaji english native }
               coverImage { extraLarge large }
               bannerImage
               episodes
               description
+              status
+              nextAiringEpisode { episode }
             }
           }
         }
         """
         data = await AnilistService._query(query, {"page": page, "perPage": per_page})
-        if not data: return []
         
         results = []
-        for m in data.get('Page', {}).get('media', []):
-            results.append({
-                "id": str(m['id']),
-                "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
-                "poster_url": m['coverImage']['extraLarge'] or m['coverImage']['large'],
-                "banner_url": m['bannerImage'],
-                "description": m['description'],
-                "episodes": m['episodes'],
-                "type": "anime",
-                "source": "anilist"
-            })
+        if data:
+            media_list = data.get('Page', {}).get('media', [])
+            for m in media_list:
+                # Filter out upcoming anime that haven't aired ep 1 yet
+                next_ep = (m.get('nextAiringEpisode') or {}).get('episode')
+                if m.get('status') == 'RELEASING' and next_ep == 1:
+                    continue
+                    
+                results.append({
+                    "id": str(m['id']),
+                    "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
+                    "poster_url": m['coverImage']['extraLarge'] or m['coverImage']['large'],
+                    "banner_url": m['bannerImage'],
+                    "description": m['description'],
+                    "episodes": m['episodes'],
+                    "type": "anime",
+                    "source": "anilist"
+                })
         
-        AnilistService._set_to_cache(cache_key, results)
+        if results:
+            AnilistService._set_to_cache(cache_key, results)
         return results
 
     @staticmethod
@@ -109,11 +118,12 @@ class AnilistService:
         query = """
         query ($page: Int, $perPage: Int) {
           Page(page: $page, perPage: $perPage) {
-            media(type: ANIME, sort: SCORE_DESC) {
+            media(type: ANIME, sort: SCORE_DESC, status_not: NOT_YET_RELEASED) {
               id
               title { romaji english native }
               coverImage { extraLarge large }
-              episodes
+              status
+              nextAiringEpisode { episode }
             }
           }
         }
@@ -124,6 +134,10 @@ class AnilistService:
         if data:
             media_list = data.get('Page', {}).get('media', [])
             for m in media_list:
+                next_ep = (m.get('nextAiringEpisode') or {}).get('episode')
+                if m.get('status') == 'RELEASING' and next_ep == 1:
+                    continue
+                    
                 results.append({
                     "id": str(m['id']),
                     "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
@@ -132,19 +146,7 @@ class AnilistService:
                     "source": "anilist"
                 })
         
-        # DEBUG: If results are empty, add a placeholder to diagnose the issue
-        if not results:
-            error_type = "Connection Failed" if not data else "No Results from API"
-            print(f"[AnilistService] DEBUG: {error_type}, adding placeholder.")
-            results.append({
-                "id": "debug_error",
-                "title": f"DEBUG: {error_type}",
-                "poster_url": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-z77Mcl1gsl9P.png",
-                "type": "anime",
-                "source": "anilist"
-            })
-
-        if results and results[0]['id'] != "debug_error":
+        if results:
             AnilistService._set_to_cache(cache_key, results)
         return results
 
@@ -159,25 +161,27 @@ class AnilistService:
         search_query = """
         query ($page: Int, $perPage: Int, $search: String) {
           Page(page: $page, perPage: $perPage) {
-            media(type: ANIME, search: $search) {
+            media(type: ANIME, search: $search, status_not: NOT_YET_RELEASED) {
               id
               title { romaji english native }
               coverImage { extraLarge large }
-              episodes
+              status
+              nextAiringEpisode { episode }
             }
           }
         }
         """
         data = await AnilistService._query(search_query, {"page": page, "perPage": per_page, "search": query_str})
         if not data:
-            print(f"[Anilist Search] No data returned for query: {query_str}")
             return []
         
         results = []
         media_list = data.get('Page', {}).get('media', [])
-        print(f"[Anilist Search] Query: '{query_str}' | Found: {len(media_list)} results")
-        
         for m in media_list:
+            next_ep = (m.get('nextAiringEpisode') or {}).get('episode')
+            if m.get('status') == 'RELEASING' and next_ep == 1:
+                continue
+                
             results.append({
                 "id": str(m['id']),
                 "title": m['title']['english'] or m['title']['romaji'] or m['title']['native'],
