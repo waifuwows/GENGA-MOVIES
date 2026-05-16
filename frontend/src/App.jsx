@@ -128,17 +128,11 @@ function App() {
 
             setHomepageLoading(true);
             try {
-                // Determine endpoint based on source
-                // 'home' -> defaults to moviebox for now, or we could mix
-                // 'moviebox' -> /api/homepage
-                // 'anilist' -> /api/anime/home
-
                 let endpoint = '/api/homepage';
                 if (activeSource === 'anilist') endpoint = '/api/anime/home';
                 if (activeSource === 'manga') endpoint = '/api/manga/mangapill/popular';
                 if (activeSource === 'music') endpoint = '/api/music/home';
                 if (activeSource === 'news') {
-                    // Fetch directly from Consumet
                     const newsRes = await fetch(`${NEWS_API_BASE}/news/ann/recent-feeds`);
                     if (newsRes.ok) {
                         const newsData = await newsRes.json();
@@ -150,23 +144,20 @@ function App() {
 
                 const res = await fetch(`${API_BASE}${endpoint}`);
                 if (res.ok) {
+                    const data = await res.json();
+                    
+                    // Detect backend block
+                    const isBlocked = activeSource === 'anilist' && Array.isArray(data) && data.length === 1 && data[0].id === 'error';
+                    if (isBlocked) throw new Error("Backend IP Blocked");
+
                     if (activeSource === 'moviebox' || activeSource === 'home') {
-                        const data = await res.json();
-                        // MovieBox normalization
                         setHomepageContent(data.groups.map(g => ({
                             ...g,
-                            items: g.items.map(it => ({
-                                ...it,
-                                source: 'moviebox' // Explicit source
-                            }))
+                            items: g.items.map(it => ({ ...it, source: 'moviebox' }))
                         })));
                     } else if (activeSource === 'anilist') {
-                        // HiAnime normalization now handled by backend
-                        const data = await res.json();
                         setHomepageContent(data);
                     } else if (activeSource === 'manga') {
-                        // Manga normalization
-                        const data = await res.json();
                         const results = data.results || [];
                         setHomepageContent([{
                             title: 'Popular Manga',
@@ -177,24 +168,43 @@ function App() {
                             }))
                         }]);
                     } else if (activeSource === 'tv') {
-                        setHomepageContent([{
-                            title: 'Live TV',
-                            items: [],
-                            _tvWelcome: true,
-                        }]);
+                        setHomepageContent([{ title: 'Live TV', items: [], _tvWelcome: true }]);
                         setHomepageLoading(false);
                         return;
-                    } else if (activeSource === 'music') {
-                        const data = await res.json();
-                        // Backend returns { "groups": [...] }
-                        if (data.groups) {
-                            setHomepageContent(data.groups);
-                        }
+                    } else if (activeSource === 'music' && data.groups) {
+                        setHomepageContent(data.groups);
                     }
+                } else {
+                    throw new Error(`HTTP ${res.status}`);
                 }
             } catch (err) {
-                // Silent catch
-                setHomepageContent([]); // Clear homepage content on error
+                console.warn("[App] Backend failed, trying client-side fallback for Anilist:", err);
+                if (activeSource === 'anilist') {
+                    try {
+                        const query = `query { Page(page: 1, perPage: 20) { media(type: ANIME, sort: TRENDING_DESC, status_not: NOT_YET_RELEASED) { id title { romaji english native } coverImage { extraLarge large } bannerImage episodes description status nextAiringEpisode { episode } } } }`;
+                        const aRes = await fetch('https://graphql.anilist.co', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query })
+                        });
+                        if (aRes.ok) {
+                            const { data } = await aRes.json();
+                            const results = (data?.Page?.media || []).map(m => ({
+                                id: String(m.id),
+                                title: m.title.english || m.title.romaji || m.title.native,
+                                poster_url: m.coverImage.extraLarge || m.coverImage.large,
+                                banner_url: m.bannerImage,
+                                description: m.description,
+                                episodes: m.episodes,
+                                type: 'anime',
+                                source: 'anilist'
+                            }));
+                            setHomepageContent([{ title: "Trending Now (Direct)", items: results }]);
+                            return;
+                        }
+                    } catch (ae) { console.error(ae); }
+                }
+                setHomepageContent([]);
             } finally {
                 setHomepageLoading(false);
             }
@@ -291,10 +301,6 @@ function App() {
 
         setLoading(true);
         try {
-            // Determine endpoint based on activeSource
-            // 'home' -> searches moviebox by default or we could aggregate (stick to moviebox for now)
-            // 'cinecli' -> Not implemented yet in backend, but we'll prepare for it
-
             let endpoint = `/api/search?query=${encodeURIComponent(query)}&content_type=${type}`;
             const base = getTargetBase(activeSource);
 
@@ -304,17 +310,24 @@ function App() {
                 endpoint = `/api/cinecli/search?query=${encodeURIComponent(query)}`;
             } else if (activeSource === 'manga') {
                 endpoint = `/api/manga/search?query=${encodeURIComponent(query)}`;
-            } else if (activeSource === 'music') { // Added music search logic
+            } else if (activeSource === 'music') { 
                 endpoint = `/api/music/search?query=${encodeURIComponent(query)}`;
             }
 
             const res = await fetch(`${base}${endpoint}`);
+            
+            // Detect backend block for search
+            if (activeSource === 'anilist') {
+                const data = await res.json();
+                const isBlocked = Array.isArray(data) && data.length === 1 && data[0].id === 'error';
+                if (isBlocked) throw new Error("Search Backend Blocked");
+                setResults(data);
+                return;
+            }
+
             const data = await res.json();
 
-            if (activeSource === 'anilist') {
-                // Backend already normalizes anime results
-                setResults(Array.isArray(data) ? data : []);
-            } else if (activeSource === 'manga') {
+            if (activeSource === 'manga') {
                 setResults((data.results || []).map(it => ({
                     ...it,
                     source: 'manga',
@@ -323,7 +336,6 @@ function App() {
             } else if (activeSource === 'music') {
                 setResults((data.results || []).map(it => ({ ...it, source: 'music' })));
             } else {
-                // Default MovieBox/Home normalization
                 setResults((data.results || []).map(it => {
                     let determinedType = it.type;
                     if (typeof it.type !== 'string') {
@@ -333,11 +345,37 @@ function App() {
                 }));
             }
         } catch (err) {
-            console.error("Search failed", err);
-            // Detailed error alerting with Cold Start explanation
+            console.warn("[App] Search backend failed, trying client-side fallback for Anilist:", err);
+            
+            if (activeSource === 'anilist') {
+                try {
+                    const queryGQL = `query { Page(page: 1, perPage: 20) { media(type: ANIME, search: "${query.replace(/"/g, '\\"')}", status_not: NOT_YET_RELEASED) { id title { romaji english native } coverImage { extraLarge large } bannerImage episodes description status } } }`;
+                    const aRes = await fetch('https://graphql.anilist.co', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: queryGQL })
+                    });
+                    if (aRes.ok) {
+                        const { data } = await aRes.json();
+                        const results = (data?.Page?.media || []).map(m => ({
+                            id: String(m.id),
+                            title: m.title.english || m.title.romaji || m.title.native,
+                            poster_url: m.coverImage.extraLarge || m.coverImage.large,
+                            banner_url: m.bannerImage,
+                            description: m.description,
+                            episodes: m.episodes,
+                            type: 'anime',
+                            source: 'anilist'
+                        }));
+                        setResults(results);
+                        return;
+                    }
+                } catch (ae) { console.error(ae); }
+            }
+            
             const isColdStart = err.message === 'Failed to fetch' || err.message.includes('timeout');
-            const coldStartMsg = isColdStart ? "\n\nNote: This might be a 'Cold Start'. Render servers sleep after inactivity. Please wait 30 seconds and try again." : "";
-            alert(`Connection Failed!\n\nError: ${err.message}${coldStartMsg}\n\nPlease ensure your backend is reachable.`);
+            const coldStartMsg = isColdStart ? "\n\nNote: This might be a 'Cold Start'. Please wait 30 seconds and try again." : "";
+            alert(`Search Failed!\n\nError: ${err.message}${coldStartMsg}`);
         } finally {
             setLoading(false);
         }
